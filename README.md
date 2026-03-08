@@ -1,26 +1,32 @@
-Here's a complete professional README.md for your repository:
+Here's the updated README.md with accurate information (58 indicators, honest coverage, etc.):
 
 ```markdown
 # GFTI Daily™ - US Economic History Dashboard
 
-[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://gftidaily.com)
-
-A comprehensive dashboard tracking **84 economic indicators** across the US economy from **1962-2026**. Includes proprietary indices, real-time crisis monitoring, and historical event analysis.
-
-![Dashboard Preview](https://via.placeholder.com/800x400?text=GFTI+Daily+Dashboard+Preview)
-
+A comprehensive dashboard tracking **58 economic indicators** across the US economy from **1960-2026**. Includes proprietary indices, real-time crisis monitoring, and historical event analysis.
+ 
 ---
 
 ## 📊 **Features**
 
 ### Core Dashboard
-- **84 economic indicators** covering:
-  - 💰 Rates & Fed (yield curve, Fed policy, balance sheet)
-  - 👥 Labor Market (unemployment, JOLTS, claims)
-  - 📈 Inflation (CPI, PCE, expectations)
-  - 🏠 Housing (starts, permits, homeownership)
-  - 📉 Market Fear (VIX, credit spreads)
-  - 💵 Money & Credit (M2, household net worth)
+- **58 economic indicators** covering:
+  - 💰 **Rates & Fed** (15) - Complete yield curve, Fed policy, balance sheet
+  - 👥 **Labor Market** (10) - Unemployment (U3 & U6), JOLTS, claims, hours worked
+  - 📈 **Inflation** (7) - CPI, Core CPI, PCE, Core PCE, breakeven expectations
+  - 🏠 **Housing** (3) - Starts, permits, homeownership rate
+  - 📊 **Growth** (4) - Real GDP, industrial production, retail sales, consumer sentiment
+  - 📉 **Market Fear** (5) - VIX, financial stress, oil, dollar, credit spreads
+  - 💵 **Money & Credit** (5) - M2, household net worth, credit spreads
+  - 🌎 **Demographics** (1) - Median household income
+
+### Coverage by Era
+| Era | Indicators |
+|-----|------------|
+| **1960-1985** | 29+ core indicators (yields, inflation, unemployment) |
+| **1986-1995** | 41+ indicators (adds oil, credit spreads, claims) |
+| **1996-2005** | 49+ indicators (adds VIX, labor depth, high yield) |
+| **2006-2026** | 58 indicators (full modern dataset) |
 
 ### Proprietary Indices
 - 🔴 **Vulnerability Index™** - Composite crisis warning system combining:
@@ -32,18 +38,22 @@ A comprehensive dashboard tracking **84 economic indicators** across the US econ
 ### Real-Time Monitoring
 - 🚨 **Iran-USA War Impact** - Daily tracking since Feb 23, 2026
 - ⏰ **Crisis Watch** - 6 key indicators with color-coded alerts
-- 📅 **War Impact Timeline** - Before/after comparison
+- 📅 **War Impact Timeline** - Before/after comparison with change tracking
 
 ### Historical Analysis
-- 📜 **64 Years of History** - Every major crisis since 1962
-- 🔍 **Historical Matches** - Find similar periods to today
-- 🎨 **Visual Vault** - 12 custom chart visualizations
+- 📜 **64 Years of History** - Every major recession and crisis since 1960
+- 🔍 **Historical Matches** - Find similar periods to today's yield curve
+- 🎨 **Visual Vault** - 12 custom chart visualizations including:
+  - The American Yield (Minard-inspired era visualization)
+  - The Vulnerability Clock™ (8 dimensions of stress)
+  - The Economic Compass (inflation vs unemployment)
+  - The Fear Timeline (every crisis measured in VIX)
 
 ---
 
 ## 🚀 **Live Demo**
 
-The app is live at: [**gftidaily.com**](https://gftidaily.com) (coming soon)
+The app is live at: [**gftidaily.com**](https://gftidaily.com)
 
 Streamlit URL: [https://gfti-daily-us.streamlit.app](https://gfti-daily-us.streamlit.app)
 
@@ -54,6 +64,7 @@ Streamlit URL: [https://gfti-daily-us.streamlit.app](https://gfti-daily-us.strea
 ### Prerequisites
 - Python 3.9+
 - pip
+- FRED API key (free from [FRED](https://fred.stlouisfed.org/docs/api/api_key.html))
 
 ### Installation
 
@@ -68,150 +79,100 @@ cd gfti-daily-us
 pip install -r requirements.txt
 ```
 
-3. **Run locally**
+3. **Set up API keys**
+Create a `.streamlit/secrets.toml` file:
+```toml
+FRED_API_KEY = "your_fred_api_key_here"
+FORMSPREE_ENDPOINT = "https://formspree.io/f/your-form-id"
+```
+
+4. **Run the app locally**
 ```bash
 streamlit run app.py
 ```
 
-4. **View in browser**
-```
-http://localhost:8501
+---
+
+## 📦 **Data Update Process**
+
+The dataset updates automatically daily via GitHub Actions. The update script:
+- Downloads new data from FRED for all 58 indicators
+- Fetches VIX from Yahoo Finance
+- Cleans and forward-fills gaps appropriately
+- Calculates all proprietary spreads and indices
+- Saves to `master_dataset.csv`
+
+To run manually:
+```bash
+python appdupdate.py
 ```
 
 ---
 
-## 📁 **Project Structure**
+## 🗂️ **Repository Structure**
 
 ```
 gfti-daily-us/
-├── app.py                 # Main application
-├── visual_vault.py        # Chart library (12 visualizations)
-├── master_dataset.csv     # 84 indicators (1962-2026)
+├── app.py                 # Main Streamlit application
+├── appdupdate.py          # Daily data update script
+├── visual_vault.py        # Custom chart visualizations
+├── master_dataset.csv     # Complete dataset (gitignored)
 ├── requirements.txt       # Python dependencies
-├── .gitignore            # Files to exclude from git
-└── README.md             # This file
+├── .streamlit/            # Streamlit configuration
+│   └── secrets.toml       # API keys (gitignored)
+├── backups/               # Daily dataset backups
+└── .github/workflows/     # GitHub Actions automation
+    └── daily_update.yml   # Daily update workflow
 ```
 
 ---
 
-## 📦 **Dependencies**
+## 🔧 **Technologies Used**
 
-```
-streamlit==1.32.0
-pandas==2.2.0
-plotly==5.18.0
-numpy==1.26.0
-```
-
----
-
-## 🔑 **Key Features Explained**
-
-### The Vulnerability Index™
-```
-Components:
-- CURVE_STRESS: Yield curve inversion (10Y2Y)
-- CREDIT_STRESS: High yield spreads
-- VIX_STRESS: Market fear/volatility
-- SYSTEMIC_STRESS: Financial conditions
-
-Range:
-- <40: LOW stress
-- 40-70: ELEVATED stress
-- >70: HIGH stress
-```
-
-### Crisis Watch Thresholds
-| Indicator | Warning | Critical |
-|-----------|---------|----------|
-| VIX | >25 | >30 |
-| Oil | >$80 | >$90 |
-| Yield Curve | <0.2% | <0% |
-| Credit Spreads | >4% | >5% |
-| Consumer Sentiment | <60 | <50 |
-| Jobless Claims | >300K | >350K |
+- **Frontend**: [Streamlit](https://streamlit.io/)
+- **Data Sources**: [FRED](https://fred.stlouisfed.org/), [Yahoo Finance](https://finance.yahoo.com/)
+- **Visualization**: [Plotly](https://plotly.com/), [Matplotlib](https://matplotlib.org/)
+- **Data Processing**: [Pandas](https://pandas.pydata.org/), [NumPy](https://numpy.org/)
+- **Automation**: GitHub Actions
+- **Email Capture**: Formspree
 
 ---
 
-## 📊 **Data Sources**
+## 📝 **Attribution & Legal**
 
-All data is sourced from:
-- 🏦 **FRED®** (Federal Reserve Economic Data, St. Louis Fed)
-- 📈 **Yahoo Finance** (VIX)
+GFTI Daily™ is built on public data from trusted sources:
 
-*GFTI Daily™ is an independent provider of cleaned and enhanced economic data and is not affiliated with, endorsed by, or sponsored by the Federal Reserve Bank of St. Louis or Yahoo! Inc.*
+- **FRED®** (Federal Reserve Economic Data) - Federal Reserve Bank of St. Louis
+- **Yahoo Finance** - VIX data
 
----
+We are an independent data provider, not affiliated with, endorsed by, or sponsored by the Federal Reserve Bank of St. Louis or Yahoo! Inc.
 
-## 📝 **Waitlist**
-
-The interactive dashboard is **completely FREE**. Join the waitlist for:
-- 📥 Full 84-indicator dataset in CSV format
-- 🔄 Daily automated updates
-- ⚡ Proprietary calculations pre-built
-- 🧹 No cleaning needed (gaps removed, weekends handled)
-
-👉 [Join the waitlist](https://gftidaily.com) in the app!
+If you publish or distribute any part of this dataset, you must include:
+> "Data sourced from FRED® (Federal Reserve Economic Data), Federal Reserve Bank of St. Louis, and Yahoo Finance."
 
 ---
 
-## 🤝 **Contact**
+## 📬 **Contact**
 
-- **Email**: [hello@gftidaily.com](mailto:hello@gftidaily.com)
+- **Email**: hello@gftidaily.com
 - **Website**: [gftidaily.com](https://gftidaily.com)
 
+
 ---
 
-## ⚖️ **Legal**
+## ⚖️ **License**
 
-© 2026 Matthew A.A. Blackman. All Rights Reserved.
+© 2026 GFTI Daily™. All rights reserved. GFTI Daily™ is a trademark of Matthew A.A. Blackman.
 
-**Trademarks:**
-- GFTI Daily™
-- Vulnerability Index™
-- Trust Tax™
-
-This software and methodology are protected by copyright law and international treaties.
+This project is for demonstration purposes. The underlying data remains the property of its respective owners (FRED®, Yahoo Finance). The code is provided for educational use.
 
 ---
 
 ## 🙏 **Acknowledgments**
 
-- Federal Reserve Bank of St. Louis for FRED® data
+- Federal Reserve Bank of St. Louis for providing FRED®
 - Yahoo Finance for VIX data
 - Streamlit for the amazing framework
-
----
-
-**Built with ❤️ by Matthew A.A. Blackman**
+- All users who provide feedback and support
 ```
 
-## 📝 **Also Create a `.gitignore` File:**
-
-```gitignore
-# Streamlit
-.streamlit/
-*.toml
-
-# Data files
-master_dataset.csv
-waitlist.json
-waitlist.csv
-
-# Python
-__pycache__/
-*.pyc
-.env
-venv/
-env/
-*.egg-info/
-
-# IDE
-.vscode/
-.idea/
-*.swp
-
-# OS
-.DS_Store
-Thumbs.db
-```
