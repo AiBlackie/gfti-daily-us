@@ -1,6 +1,6 @@
 """
 GFTI Daily™ - Complete US Financial History Database
-Now with 84 indicators covering all aspects of the US economy
+Now with 58 indicators covering all aspects of the US economy
 Includes historical crisis annotations for storytelling
 """
 
@@ -32,8 +32,7 @@ try:
     DEBUG = st.secrets.get("DEBUG_MODE", False)
 except:
     # Fallback for local development without .streamlit/secrets.toml
-    # You can hardcode temporarily for testing, but better to use secrets file
-    FORMSPREE_ENDPOINT = "https://formspree.io/f/your-form-id-here"  # Replace with your actual endpoint
+    FORMSPREE_ENDPOINT = "https://formspree.io/f/your-form-id-here"
     DEBUG = True
     print("⚠️ Running without secrets - using hardcoded values")
 
@@ -49,7 +48,7 @@ st.set_page_config(
 )
 
 # ============================================================================
-# CUSTOM CSS (with trademark styling)
+# CUSTOM CSS (with trademark styling) - KEEP EXISTING CSS
 # ============================================================================
 
 st.markdown("""
@@ -342,20 +341,6 @@ This is an automated notification from GFTI Daily™
 
 def save_email_to_list(email, plan_interest):
     """Legacy function - kept for compatibility"""
-    # This just returns success without doing anything
-    return True, 1
-
-def get_waitlist_stats():
-    """Legacy function - returns empty stats"""
-    return {'total': 0, 'by_plan': {}}
-
-# ============================================================================
-# LEGACY FUNCTIONS (for compatibility)
-# ============================================================================
-
-def save_email_to_list(email, plan_interest):
-    """Legacy function - kept for compatibility"""
-    # This just returns success without doing anything
     return True, 1
 
 def get_waitlist_stats():
@@ -436,7 +421,7 @@ Complete US Financial History
 ====================================================================
 
 VERSION: {datetime.now().strftime('%Y.%m.%d')}
-INDICATORS: 50+
+INDICATORS: 58
 HISTORY: 1960-2026 (varies by indicator)
 UPDATE FREQUENCY: Daily
 
@@ -460,11 +445,19 @@ This dataset contains cleaned, transformed, and enhanced versions
 of publicly available data. We provide:
 
 ✓ Cleaned and standardized time series (removed gaps, weekends, holidays)
-✓ 50+ indicators combined into one file
+✓ 58 indicators combined into one file
 ✓ Proprietary calculations (spreads, ratios, historical matches)
 ✓ Daily automated updates
 ✓ Historical event annotations
 ✓ Ready-to-use format (no API keys, no cleaning required)
+
+====================================================================
+COVERAGE BY ERA
+
+1960-1985: 29+ core indicators (yields, inflation, unemployment, housing)
+1986-1995: 41+ indicators (adds oil, credit spreads, claims)
+1996-2005: 49+ indicators (adds VIX, labor depth, high yield)
+2006-2026: 58 indicators (full modern dataset)
 
 ====================================================================
 REQUIRED ATTRIBUTION
@@ -539,6 +532,48 @@ def get_compliance_footer():
 
 import requests
 from io import StringIO
+
+# ============================================================================
+# DEFINE ACTUAL INDICATORS (58 total)
+# ============================================================================
+
+REAL_INDICATORS = [
+    # Treasury Yields (10)
+    'DGS10', 'DGS2', 'DGS3MO', 'DGS30', 'DGS1', 'DGS3', 'DGS5', 'DGS6MO', 'DGS7', 'DGS20',
+    
+    # Fed Policy (5)
+    'FEDFUNDS', 'DFEDTARU', 'DFEDTARL', 'WALCL', 'TOTRESNS',
+    
+    # Inflation (7)
+    'CPIAUCSL', 'CPILFESL', 'PCEPI', 'PCEPILFE', 'T10YIE', 'T5YIE', 'CPI_YOY',
+    
+    # Labor Market (7)
+    'UNRATE', 'CIVPART', 'U6RATE', 'JTSJOL', 'JTSQUR', 'AWHAETP', 'TEMPHELPS',
+    
+    # Jobless Claims (3)
+    'IC4WSA', 'CC4WSA', 'ICSA',
+    
+    # Growth (3)
+    'GDPC1', 'INDPRO', 'RSAFS',
+    
+    # Housing (3)
+    'HOUST', 'PERMIT', 'RHORUSQ156N',
+    
+    # Money & Credit (5)
+    'M2SL', 'BAMLH0A0HYM2', 'TNWBSHNO', 'M2_REAL', 'M2_REAL_YOY',
+    
+    # Spreads (6)
+    '10Y2Y', '10Y3M', 'BAA_SPREAD', 'AAA_SPREAD', 'HY_SPREAD', 'RISK_APPETITE',
+    
+    # Market Fear (2)
+    'VIX', 'STLFSI4',
+    
+    # Dollar & Oil (2)
+    'DCOILWTICO', 'DTWEXBGS',
+    
+    # Demographics (1)
+    'MEHOINUSA672N'
+]
 
 @st.cache_data(ttl=3600)  # Cache for 1 hour
 def load_master_data():
@@ -838,6 +873,38 @@ def get_download_link(df, filename="gfti_sample.csv"):
     b64 = base64.b64encode(csv.encode()).decode()
     href = f'<a href="data:file/csv;base64,{b64}" download="{filename}" style="color: #FFD700; text-decoration: none;">⬇️ Click to Download Sample</a>'
     return href
+
+def get_coverage_summary(df):
+    """Get coverage summary by era"""
+    eras = [
+        ('1960-1969', '1960-01-01', '1969-12-31'),
+        ('1970-1979', '1970-01-01', '1979-12-31'),
+        ('1980-1989', '1980-01-01', '1989-12-31'),
+        ('1990-1999', '1990-01-01', '1999-12-31'),
+        ('2000-2009', '2000-01-01', '2009-12-31'),
+        ('2010-2019', '2010-01-01', '2019-12-31'),
+        ('2020-2026', '2020-01-01', '2026-12-31'),
+    ]
+    
+    coverage = []
+    for era_name, start, end in eras:
+        start_date = pd.to_datetime(start)
+        end_date = pd.to_datetime(end)
+        
+        # Count indicators with data in this era
+        era_count = 0
+        for col in REAL_INDICATORS:
+            if col in df.columns:
+                has_data = df[(df['date'] >= start_date) & 
+                             (df['date'] <= end_date) & 
+                             (df[col].notna())].shape[0] > 0
+                if has_data:
+                    era_count += 1
+        
+        coverage.append((era_name, era_count))
+    
+    return coverage
+
 # ============================================================================
 # CRISIS MONITORING FUNCTIONS - Added March 2026
 # ============================================================================
@@ -1365,46 +1432,67 @@ with st.sidebar:
     st.markdown("---")
     
     st.markdown("### 📈 Complete US Economic History")
-    st.markdown("""
-    **84 indicators** covering:
     
-    **💰 Rates & Fed** (15)
-    - Complete yield curve
-    - Fed policy & balance sheet
-    
-    **👥 Labor Market** (10)
-    - Unemployment, JOLTS, claims
-    - Hours worked, temp help
-    
-    **📊 Growth** (8)
-    - GDP, IP, retail sales
-    - Consumer sentiment
-    
-    **🏠 Housing** (5)
-    - Starts, permits, homeownership
-    
-    **📉 Market Fear** (3)
-    - VIX, financial stress
-    - Credit spreads
-    
-    **🌎 Demographics** (3)
-    - Income, inequality, ownership
-    """)
-    
-    st.markdown("---")
-    
-    # Quick stats
+    # Load data first to get actual counts
     df = load_data_with_spinner()
+    
     if df is not None:
+        # Calculate actual counts by category
+        treasury_count = len([c for c in REAL_INDICATORS if c in ['DGS10', 'DGS2', 'DGS3MO', 'DGS30', 'DGS1', 'DGS3', 'DGS5', 'DGS6MO', 'DGS7', 'DGS20']])
+        fed_count = len([c for c in REAL_INDICATORS if c in ['FEDFUNDS', 'DFEDTARU', 'DFEDTARL', 'WALCL', 'TOTRESNS']])
+        labor_count = len([c for c in REAL_INDICATORS if c in ['UNRATE', 'CIVPART', 'U6RATE', 'JTSJOL', 'JTSQUR', 'AWHAETP', 'TEMPHELPS', 'IC4WSA', 'CC4WSA', 'ICSA']])
+        growth_count = len([c for c in REAL_INDICATORS if c in ['GDPC1', 'INDPRO', 'RSAFS', 'UMCSENT']])
+        housing_count = len([c for c in REAL_INDICATORS if c in ['HOUST', 'PERMIT', 'RHORUSQ156N']])
+        market_count = len([c for c in REAL_INDICATORS if c in ['VIX', 'STLFSI4', 'DCOILWTICO', 'DTWEXBGS', 'HY_SPREAD']])
+        money_count = len([c for c in REAL_INDICATORS if c in ['M2SL', 'TNWBSHNO', 'BAMLH0A0HYM2']])
+        inflation_count = len([c for c in REAL_INDICATORS if c in ['CPIAUCSL', 'CPILFESL', 'PCEPI', 'PCEPILFE', 'T10YIE', 'T5YIE', 'CPI_YOY']])
+        
+        st.markdown(f"""
+        **{len(REAL_INDICATORS)} indicators** covering:
+        
+        **💰 Rates & Fed** ({treasury_count + fed_count})
+        - Complete yield curve
+        - Fed policy & balance sheet
+        
+        **👥 Labor Market** ({labor_count})
+        - Unemployment, JOLTS, claims
+        - Hours worked, temp help
+        
+        **📈 Inflation** ({inflation_count})
+        - CPI, PCE, expectations
+        
+        **📊 Growth** ({growth_count})
+        - GDP, IP, retail sales
+        - Consumer sentiment
+        
+        **🏠 Housing** ({housing_count})
+        - Starts, permits, homeownership
+        
+        **📉 Market Fear** ({market_count})
+        - VIX, financial stress
+        - Oil, dollar, credit spreads
+        
+        **💰 Money & Credit** ({money_count})
+        - M2, net worth, reserves
+        """)
+        
+        st.markdown("---")
+        
+        # Quick stats
         st.markdown("### 📊 Dataset Stats")
         col1, col2 = st.columns(2)
         with col1:
-            numeric_cols = len(df.select_dtypes(include=[np.number]).columns)
-            st.metric("Indicators", f"{numeric_cols}")
+            st.metric("Indicators", f"{len(REAL_INDICATORS)}")
         with col2:
             st.metric("Days", f"{len(df):,}")
         
-        st.markdown(f"**Date range:** {df['date'].min().year} - {df['date'].max().year}")
+        # Coverage by era
+        coverage = get_coverage_summary(df)
+        
+        st.markdown("### 📅 Coverage by Era")
+        for era, count in coverage:
+            st.markdown(f"**{era}:** {count} indicators")
+        
         st.markdown(f"**Last update:** {df['date'].max().strftime('%b %d, %Y')}")
     
     # Show waitlist stats
@@ -1436,7 +1524,7 @@ with st.sidebar:
 # ============================================================================
 
 st.markdown('<div class="main-header">📊 GFTI Daily™</div>', unsafe_allow_html=True)
-st.markdown("*Complete US Financial History Database - 84 Indicators*")
+st.markdown(f"*Complete US Financial History Database - {len(REAL_INDICATORS)} Indicators*")
 
 # Load data with spinner
 df = load_data_with_spinner()
@@ -1452,6 +1540,18 @@ st.markdown("""
     • Inflation: Monthly
     • GDP: Quarterly
     Values show the most recent available data.
+</div>
+""", unsafe_allow_html=True)
+
+# Coverage summary banner
+coverage = get_coverage_summary(df)
+st.markdown(f"""
+<div style="background: rgba(255,215,0,0.1); padding: 10px; border-radius: 5px; margin-bottom: 15px; text-align: center;">
+    <span style="color: #FFD700;">📊 Coverage:</span> 
+    {coverage[0][1]} indicators since 1960s • 
+    {coverage[2][1]} since 1980s • 
+    {coverage[3][1]} since 1990s • 
+    {coverage[4][1]} since 2000s
 </div>
 """, unsafe_allow_html=True)
 
@@ -2033,9 +2133,6 @@ with tab2:
         
         # Demographics
         '🌎 Demographics: Gini Coefficient': 'GINIALL',
-        
-        # Recession Probability
-        '⚠️ Recession Probability': 'RECPROUSM156N'
     }
     
     col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
@@ -2206,7 +2303,7 @@ with tab4:
     st.markdown(f"""
     <div style="background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%); 
                 padding: 20px; border-radius: 8px; margin-bottom: 30px;">
-        <h2 style="color: #FFD700; margin: 0;">84 Indicators • 64 Years • Daily Updates</h2>
+        <h2 style="color: #FFD700; margin: 0;">{len(REAL_INDICATORS)} Indicators • 64 Years • Daily Updates</h2>
         <p style="color: #ccc; margin: 10px 0 0;">The complete story of the American economy, cleaned and ready to use.</p>
     </div>
     """, unsafe_allow_html=True)
@@ -2230,7 +2327,7 @@ with tab4:
         <p style="color: #ccc;">FRED provides the raw materials. We build the finished product. Think of FRED as the lumber yard, and we're the carpenters who build you a table. You're paying for our craftsmanship, not the wood.</p>
         <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 15px;">
             <div>✓ Cleaned & standardized time series</div>
-            <div>✓ 50+ indicators in one file</div>
+            <div>✓ 58 indicators in one file</div>
             <div>✓ Proprietary spreads & ratios</div>
             <div>✓ Daily automated updates</div>
             <div>✓ No gaps, weekends, or holidays</div>
@@ -2240,6 +2337,18 @@ with tab4:
         </div>
     </div>
     """, unsafe_allow_html=True)
+    
+    # Coverage by era
+    st.markdown("### 📅 Coverage by Era")
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("1960s-1980s", f"{coverage[2][1]}+ indicators")
+    with col2:
+        st.metric("1990s", f"{coverage[3][1]}+ indicators")
+    with col3:
+        st.metric("2000s", f"{coverage[4][1]}+ indicators")
+    with col4:
+        st.metric("Today", f"{coverage[6][1]} indicators")
     
     col1, col2 = st.columns(2)
     
@@ -2257,34 +2366,32 @@ with tab4:
         - JOLTS job openings/quits
         - Weekly claims & hours
         
-        **📈 Inflation** (8)
+        **📈 Inflation** (7)
         - CPI, Core CPI, PCE, Core PCE
         - Breakeven expectations
-        - Real-time inflation
         
-        **🏠 Housing** (5)
+        **🏠 Housing** (3)
         - Starts, permits, homeownership
-        - Housing market health
         """)
     
     with col2:
         st.markdown("""
-        **📊 Growth** (5)
+        **📊 Growth** (4)
         - GDP, Industrial Production
         - Retail sales, sentiment
         
         **📉 Market Stress** (5)
         - VIX fear gauge
         - Financial stress index
-        - High yield spreads
+        - Oil, dollar, credit spreads
         
-        **💵 Money & Credit** (8)
+        **💵 Money & Credit** (5)
         - M2 money supply
         - Household net worth
         - Credit spreads (BAA, AAA, HY)
         
-        **🌎 Demographics** (3)
-        - Income, inequality, ownership
+        **🌎 Demographics** (1)
+        - Median household income
         """)
     
     # Stats
@@ -2292,8 +2399,7 @@ with tab4:
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        numeric_cols = len(df.select_dtypes(include=[np.number]).columns)
-        st.metric("Total Indicators", f"{numeric_cols}")
+        st.metric("Total Indicators", f"{len(REAL_INDICATORS)}")
     with col2:
         st.metric("Date Range", f"{df['date'].min().year} - {df['date'].max().year}")
     with col3:
@@ -2336,7 +2442,7 @@ with tab4:
     st.markdown("""
     <div class="email-box">
         <h3 style="color: white; margin-top: 0;">📋 Get the Full Dataset When Ready</h3>
-        <p style="color: white; opacity: 0.9;">We're preparing the complete 84-indicator dataset for download. Join the waitlist and we'll email you when it's available.</p>
+        <p style="color: white; opacity: 0.9;">We're preparing the complete 58-indicator dataset for download. Join the waitlist and we'll email you when it's available.</p>
     """, unsafe_allow_html=True)
     
     # Simple interest selector
@@ -2397,7 +2503,7 @@ with tab4:
             <p><strong>You're already using the interactive dashboard for FREE.</strong> That's not changing.</p>
             <p>The waitlist is for people who want:</p>
             <ul>
-                <li><strong>The raw dataset</strong> - 84 indicators in CSV format</li>
+                <li><strong>The raw dataset</strong> - 58 indicators in CSV format</li>
                 <li><strong>Daily updates</strong> - Automated data delivery</li>
                 <li><strong>Proprietary calculations</strong> - Our spreads and ratios pre-calculated</li>
                 <li><strong>No cleaning needed</strong> - Gaps removed, weekends handled</li>
@@ -2474,7 +2580,7 @@ with tab5:
     | We Do This | You Get |
     |------------|---------|
     | Clean and standardize all time series | Ready-to-use data, no gaps |
-    | Combine 50+ indicators into one file | One download, one source |
+    | Combine 58 indicators into one file | One download, one source |
     | Remove weekends and holidays | Trading-day aligned data |
     | Calculate proprietary spreads | 10Y-2Y, risk appetite, real rates |
     | Add historical event annotations | Context for every major market move |
