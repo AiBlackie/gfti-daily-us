@@ -22,6 +22,22 @@ from pathlib import Path
 import visual_vault
 
 # ============================================================================
+# CONFIGURATION & SECRETS HANDLING
+# ============================================================================
+
+# Check if we're running locally or on Streamlit Cloud
+try:
+    # Try to access secrets (will work on Streamlit Cloud)
+    FORMSPREE_ENDPOINT = st.secrets["FORMSPREE_ENDPOINT"]
+    DEBUG = st.secrets.get("DEBUG_MODE", False)
+except:
+    # Fallback for local development without .streamlit/secrets.toml
+    # You can hardcode temporarily for testing, but better to use secrets file
+    FORMSPREE_ENDPOINT = "https://formspree.io/f/your-form-id-here"  # Replace with your actual endpoint
+    DEBUG = True
+    print("⚠️ Running without secrets - using hardcoded values")
+
+# ============================================================================
 # PAGE CONFIG
 # ============================================================================
 
@@ -254,6 +270,99 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ============================================================================
+# EMAIL FUNCTIONS - USING FORMSPREE WITH SECRETS
+# ============================================================================
+
+import requests
+from datetime import datetime
+
+def send_email_notification(email, interest):
+    """Send email notification via Formspree using secrets"""
+    try:
+        # Get endpoint from secrets
+        if 'FORMSPREE_ENDPOINT' not in st.secrets:
+            print("❌ FORMSPREE_ENDPOINT not found in secrets")
+            st.error("Email service not configured. Please contact support.")
+            return False
+        
+        url = st.secrets["FORMSPREE_ENDPOINT"]
+        
+        # Prepare the data
+        data = {
+            'email': email,
+            'interest': interest,
+            '_replyto': email,  # So you can reply directly
+            '_subject': f'🎯 New GFTI Daily Signup: {interest}',
+            'message': f"""
+New waitlist signup:
+
+📧 Email: {email}
+🎯 Interest: {interest}
+🕐 Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+---
+This is an automated notification from GFTI Daily™
+            """
+        }
+        
+        print(f"📧 Sending notification for {email}...")
+        
+        # Send the request
+        response = requests.post(url, data=data)
+        
+        print(f"📥 Response status: {response.status_code}")
+        
+        # Check if it worked
+        if response.status_code == 200:
+            print(f"✅ Notification sent to gftdaily@gmail.com")
+            
+            # Store in session state as backup
+            if 'signups' not in st.session_state:
+                st.session_state['signups'] = []
+            
+            st.session_state['signups'].append({
+                'email': email,
+                'interest': interest,
+                'time': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            })
+            
+            return True
+        else:
+            print(f"❌ Formspree error: {response.status_code}")
+            print(f"Response: {response.text}")
+            return False
+            
+    except Exception as e:
+        print(f"❌ Exception in send_email_notification: {e}")
+        return False
+
+# ============================================================================
+# LEGACY FUNCTIONS (for compatibility)
+# ============================================================================
+
+def save_email_to_list(email, plan_interest):
+    """Legacy function - kept for compatibility"""
+    # This just returns success without doing anything
+    return True, 1
+
+def get_waitlist_stats():
+    """Legacy function - returns empty stats"""
+    return {'total': 0, 'by_plan': {}}
+
+# ============================================================================
+# LEGACY FUNCTIONS (for compatibility)
+# ============================================================================
+
+def save_email_to_list(email, plan_interest):
+    """Legacy function - kept for compatibility"""
+    # This just returns success without doing anything
+    return True, 1
+
+def get_waitlist_stats():
+    """Legacy function - returns empty stats"""
+    return {'total': 0, 'by_plan': {}}
+
+# ============================================================================
 # HISTORICAL EVENTS DATABASE
 # ============================================================================
 
@@ -314,78 +423,6 @@ HISTORICAL_EVENTS = [
     {'date': '2022-03-16', 'label': 'Hike Cycle Begins', 'category': 'fed',
      'description': 'Fed starts fastest hiking cycle since 1980s', 'marker': '🏦', 'y_offset': -2},
 ]
-
-# ============================================================================
-# EMAIL CAPTURE FUNCTIONS
-# ============================================================================
-
-def save_email_to_list(email, plan_interest="Not specified"):
-    """Save email to JSON file with deduplication"""
-    try:
-        with open('waitlist.json', 'r') as f:
-            data = json.load(f)
-    except FileNotFoundError:
-        data = {
-            'emails': [],
-            'signups': {},
-            'stats': {
-                'total': 0,
-                'by_plan': {'Basic': 0, 'Pro': 0, 'Enterprise': 0, 'Not specified': 0},
-                'by_day': {}
-            }
-        }
-    
-    # Check if email already exists (case-insensitive)
-    email_lower = email.lower()
-    email_exists = False
-    for existing_email in data['emails']:
-        if existing_email.lower() == email_lower:
-            email_exists = True
-            break
-    
-    if not email_exists:
-        today = datetime.now().strftime('%Y-%m-%d')
-        data['emails'].append(email)
-        data['signups'][email] = {
-            'date': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            'plan': plan_interest,
-            'signup_id': hashlib.md5(f"{email}{datetime.now()}".encode()).hexdigest()[:8]
-        }
-        data['stats']['total'] += 1
-        data['stats']['by_plan'][plan_interest] = data['stats']['by_plan'].get(plan_interest, 0) + 1
-        data['stats']['by_day'][today] = data['stats']['by_day'].get(today, 0) + 1
-        
-        with open('waitlist.json', 'w') as f:
-            json.dump(data, f, indent=2)
-        
-        # Also save to CSV for easy export
-        save_to_csv(email, plan_interest)
-        
-        return True, data['stats']['total']
-    return False, data['stats']['total']
-
-def save_to_csv(email, plan_interest):
-    """Backup save to CSV file"""
-    file_exists = os.path.isfile('waitlist.csv')
-    with open('waitlist.csv', 'a', newline='') as f:
-        writer = csv.writer(f)
-        if not file_exists:
-            writer.writerow(['email', 'plan_interest', 'signup_date', 'signup_time'])
-        writer.writerow([
-            email, 
-            plan_interest, 
-            datetime.now().strftime('%Y-%m-%d'),
-            datetime.now().strftime('%H:%M:%S')
-        ])
-
-def get_waitlist_stats():
-    """Get waitlist statistics for display"""
-    try:
-        with open('waitlist.json', 'r') as f:
-            data = json.load(f)
-        return data['stats']
-    except:
-        return {'total': 0, 'by_plan': {}}
 
 # ============================================================================
 # COMPLIANCE FUNCTIONS
@@ -497,41 +534,81 @@ def get_compliance_footer():
 """
 
 # ============================================================================
-# LOAD DATA FUNCTIONS - FIXED VERSION
+# LOAD DATA FUNCTIONS - UPDATED WITH GOOGLE DRIVE
 # ============================================================================
 
-@st.cache_data
+import requests
+from io import StringIO
+
+@st.cache_data(ttl=3600)  # Cache for 1 hour
 def load_master_data():
-    """Load the master dataset with all indicators - FIXED DATE PARSING"""
+    """Load the master dataset from Google Drive"""
     try:
+        # First try to load from local file (for development)
         if os.path.exists('master_dataset.csv'):
-            # First read without parsing dates
             df = pd.read_csv('master_dataset.csv')
+            print("✅ Loaded local master_dataset.csv")
             
-            # Manually parse dates with explicit format for DD/MM/YYYY
-            # Your dates are in DD/MM/YYYY format from the appvix.py fix
+            # Parse dates
             try:
                 df['date'] = pd.to_datetime(df['date'], format='%d/%m/%Y')
                 print("✅ Parsed dates with format='%d/%m/%Y'")
             except:
                 try:
-                    # Try dayfirst=True as fallback
                     df['date'] = pd.to_datetime(df['date'], dayfirst=True)
                     print("✅ Parsed dates with dayfirst=True")
                 except:
-                    # Last resort
                     df['date'] = pd.to_datetime(df['date'])
                     print("✅ Parsed dates with auto-detection")
             
-            # Drop any rows with invalid dates
-            df = df.dropna(subset=['date'])
-            
             return df
-        else:
-            st.error("❌ master_dataset.csv not found. Please ensure the file is in the same directory.")
-            return None
+        
+        # For Streamlit Cloud - download from Google Drive
+        st.info("📥 Loading 64 years of economic history from Google Drive...")
+        
+        # YOUR GOOGLE DRIVE FILE ID
+        file_id = "1FfpJ7vS0q5E8rkn-PmHezJS0m3Rn7IjX"
+        
+        # Direct download link
+        url = f"https://drive.google.com/uc?export=download&id={file_id}"
+        
+        # Download with proper headers
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+        
+        session = requests.Session()
+        response = session.get(url, headers=headers, stream=True)
+        response.raise_for_status()
+        
+        # Check for Google Drive virus warning page
+        if 'Google Drive - Virus scan warning' in response.text:
+            import re
+            confirm = re.findall('confirm=([0-9A-Za-z]+)', response.text)
+            if confirm:
+                url = f"https://drive.google.com/uc?export=download&confirm={confirm[0]}&id={file_id}"
+                response = session.get(url, headers=headers, stream=True)
+        
+        # Read the CSV
+        df = pd.read_csv(StringIO(response.text))
+        
+        # Parse dates
+        try:
+            df['date'] = pd.to_datetime(df['date'], format='%d/%m/%Y')
+            print("✅ Parsed dates with format='%d/%m/%Y'")
+        except:
+            try:
+                df['date'] = pd.to_datetime(df['date'], dayfirst=True)
+                print("✅ Parsed dates with dayfirst=True")
+            except:
+                df['date'] = pd.to_datetime(df['date'])
+                print("✅ Parsed dates with auto-detection")
+        
+        st.success("✅ Data loaded successfully from Google Drive!")
+        return df
+        
     except Exception as e:
-        st.error(f"❌ Error loading master data: {e}")
+        st.error(f"❌ Error loading data: {e}")
         return None
 
 def load_data_with_spinner():
@@ -2135,7 +2212,7 @@ with tab4:
     """, unsafe_allow_html=True)
     
     # =========================================
-    # FREE ACCESS MESSAGE - NEW
+    # FREE ACCESS MESSAGE
     # =========================================
     st.markdown("""
     <div style="background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%); 
@@ -2253,7 +2330,7 @@ with tab4:
     st.markdown("---")
     
     # =========================================
-    # EMAIL CAPTURE SECTION - SIMPLIFIED
+    # EMAIL CAPTURE SECTION - DIRECT TO YOUR INBOX (NO STORAGE)
     # =========================================
     
     st.markdown("""
@@ -2262,7 +2339,7 @@ with tab4:
         <p style="color: white; opacity: 0.9;">We're preparing the complete 84-indicator dataset for download. Join the waitlist and we'll email you when it's available.</p>
     """, unsafe_allow_html=True)
     
-    # Simple interest selector (optional but helpful)
+    # Simple interest selector
     interest = st.radio(
         "I'm interested in:",
         ["Individual/Academic", "Business/Commercial", "Just browsing"],
@@ -2283,7 +2360,7 @@ with tab4:
         if submit and email:
             # Validate email (basic check)
             if '@' in email and '.' in email:
-                # Map interest to plan for your existing function
+                # Map interest to plan
                 plan_map = {
                     "Individual/Academic": "Individual",
                     "Business/Commercial": "Business",
@@ -2291,40 +2368,23 @@ with tab4:
                 }
                 selected_plan = plan_map[interest]
                 
-                is_new, total = save_email_to_list(email, selected_plan)
-                if is_new:
+                # Send email notification (no storage)
+                success = send_email_notification(email, selected_plan)
+                
+                if success:
                     st.balloons()
-                    st.success(f"✅ Thanks! You're #{total} on the waitlist. We'll email you at {email} when the dataset is ready.")
+                    st.success(f"✅ Thanks! We'll email you at {email} when the dataset is ready.")
                 else:
-                    st.info(f"📧 {email} is already on our waitlist (position #{total})")
+                    st.error("❌ Could not send notification. Please try again later.")
             else:
                 st.error("❌ Please enter a valid email address")
     
-    # Show waitlist counter with social proof
-    stats = get_waitlist_stats()
-    if stats['total'] > 0:
-        st.markdown(f"""
-        <p style='text-align: center; color: #FFD700; margin-top: 10px;'>
-            ⭐ <strong>{stats['total']}+ people</strong> already on the waitlist
-        </p>
-        """, unsafe_allow_html=True)
-        
-        # Show recent signups (last 3) for social proof
-        try:
-            with open('waitlist.json', 'r') as f:
-                data = json.load(f)
-            recent = list(data['signups'].items())[-3:]
-            if recent:
-                st.markdown("""
-                <div style='background: rgba(255,215,0,0.05); padding: 10px; border-radius: 5px; margin-top: 10px;'>
-                    <p style='color: #888; margin: 0; font-size: 0.8rem; text-align: center;'>Recent signups:</p>
-                """, unsafe_allow_html=True)
-                for email, info in recent:
-                    masked_email = email[:3] + '...' + email[email.find('@'):]
-                    st.markdown(f"<p style='color: #888; margin: 2px 0; font-size: 0.8rem; text-align: center;'>• {masked_email} ({info['plan']})</p>", unsafe_allow_html=True)
-                st.markdown("</div>", unsafe_allow_html=True)
-        except:
-            pass
+    # Simple success message instead of stored stats
+    st.markdown("""
+    <p style='text-align: center; color: #FFD700; margin-top: 10px;'>
+        ⭐ <strong>Privacy first:</strong> Your email is sent directly to us, never stored.
+    </p>
+    """, unsafe_allow_html=True)
     
     st.markdown("</div>", unsafe_allow_html=True)
     
