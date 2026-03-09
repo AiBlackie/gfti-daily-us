@@ -1,6 +1,6 @@
 """
 GFTI Daily™ - Complete US Financial History Database
-Now with 58 indicators covering all aspects of the US economy
+Now with 58 indicators (50 raw FRED series + 8 proprietary calculations)
 Includes historical crisis annotations for storytelling
 """
 
@@ -48,7 +48,7 @@ st.set_page_config(
 )
 
 # ============================================================================
-# CUSTOM CSS (with trademark styling) - KEEP EXISTING CSS
+# CUSTOM CSS (with trademark styling)
 # ============================================================================
 
 st.markdown("""
@@ -269,6 +269,74 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ============================================================================
+# CONSTANTS
+# ============================================================================
+
+WAR_START_DATE = "2026-02-28"  # Iran-USA war start date (corrected from Feb 23 to Feb 28)
+
+# ============================================================================
+# INDICATOR CLASSIFICATION - TRANSPARENT BREAKDOWN
+# ============================================================================
+
+RAW_INDICATORS = [
+    # Treasury Yields (10)
+    'DGS1', 'DGS10', 'DGS2', 'DGS20', 'DGS3', 'DGS30', 'DGS3MO', 'DGS5', 'DGS6MO', 'DGS7',
+    
+    # Fed Policy (5)
+    'DFEDTARL', 'DFEDTARU', 'FEDFUNDS', 'TOTRESNS', 'WALCL',
+    
+    # Inflation (5 - raw price levels)
+    'CPIAUCSL', 'CPILFESL', 'PCEPI', 'PCEPILFE',
+    
+    # Inflation Expectations (2)
+    'T10YIE', 'T5YIE',
+    
+    # Labor Market (7)
+    'AWHAETP', 'CIVPART', 'JTSJOL', 'JTSQUR', 'TEMPHELPS', 'U6RATE', 'UNRATE',
+    
+    # Jobless Claims (3)
+    'CC4WSA', 'IC4WSA', 'ICSA',
+    
+    # Growth (3)
+    'GDPC1', 'INDPRO', 'RSAFS',
+    
+    # Housing (3)
+    'HOUST', 'PERMIT', 'RHORUSQ156N',
+    
+    # Money & Credit (3)
+    'BAMLH0A0HYM2', 'M2SL', 'TNWBSHNO',
+    
+    # Market Fear (2)
+    'STLFSI4', 'VIX',
+    
+    # Dollar & Oil (2)
+    'DCOILWTICO', 'DTWEXBGS',
+    
+    # Demographics (1)
+    'MEHOINUSA672N'
+]
+
+CALCULATED_INDICATORS = [
+    # Inflation (1)
+    'CPI_YOY',           # Year-over-year inflation rate
+    
+    # Money & Credit (2)
+    'M2_REAL',           # Inflation-adjusted money supply
+    'M2_REAL_YOY',       # Real money supply growth
+    
+    # Spreads (5)
+    '10Y2Y',             # 10Y-2Y Treasury spread (recession indicator)
+    '10Y3M',             # 10Y-3M Treasury spread
+    'BAA_SPREAD',        # BAA corporate credit spread
+    'AAA_SPREAD',        # AAA corporate credit spread
+    'HY_SPREAD',         # High yield credit spread
+    'RISK_APPETITE',     # HY vs BAA spread differential
+]
+
+# Combined list for backward compatibility
+REAL_INDICATORS = RAW_INDICATORS + CALCULATED_INDICATORS
+
+# ============================================================================
 # EMAIL FUNCTIONS - USING FORMSPREE WITH SECRETS
 # ============================================================================
 
@@ -407,6 +475,8 @@ HISTORICAL_EVENTS = [
      'description': 'CPI begins multi-year rise', 'marker': '📈', 'y_offset': 2},
     {'date': '2022-03-16', 'label': 'Hike Cycle Begins', 'category': 'fed',
      'description': 'Fed starts fastest hiking cycle since 1980s', 'marker': '🏦', 'y_offset': -2},
+    {'date': WAR_START_DATE, 'label': 'Iran-USA War Begins', 'category': 'geopolitical',
+     'description': 'US and Israel launch coordinated strikes on Iran', 'marker': '💥', 'y_offset': -2},
 ]
 
 # ============================================================================
@@ -421,7 +491,7 @@ Complete US Financial History
 ====================================================================
 
 VERSION: {datetime.now().strftime('%Y.%m.%d')}
-INDICATORS: 58
+INDICATORS: 58 total (50 raw FRED series + 8 proprietary calculations)
 HISTORY: 1960-2026 (varies by indicator)
 UPDATE FREQUENCY: Daily
 
@@ -446,18 +516,32 @@ of publicly available data. We provide:
 
 ✓ Cleaned and standardized time series (removed gaps, weekends, holidays)
 ✓ 58 indicators combined into one file
-✓ Proprietary calculations (spreads, ratios, historical matches)
+✓ 8 proprietary calculations (spreads, real values, growth rates)
 ✓ Daily automated updates
 ✓ Historical event annotations
 ✓ Ready-to-use format (no API keys, no cleaning required)
 
+Breakdown: 50 raw FRED series + 8 calculated indicators = 58 total
+
+Proprietary Calculations:
+• CPI_YOY - Year-over-year inflation rate
+• M2_REAL - Inflation-adjusted money supply
+• M2_REAL_YOY - Real money supply growth
+• 10Y2Y - 10Y-2Y Treasury spread (recession indicator)
+• 10Y3M - 10Y-3M Treasury spread
+• BAA_SPREAD - BAA corporate credit spread
+• AAA_SPREAD - AAA corporate credit spread
+• HY_SPREAD - High yield credit spread
+• RISK_APPETITE - HY vs BAA spread differential
+
 ====================================================================
 COVERAGE BY ERA
 
-1960-1985: 29+ core indicators (yields, inflation, unemployment, housing)
-1986-1995: 41+ indicators (adds oil, credit spreads, claims)
-1996-2005: 49+ indicators (adds VIX, labor depth, high yield)
-2006-2026: 58 indicators (full modern dataset)
+1960-1969: 29 core indicators
+1970-1979: 32 indicators
+1980-1989: 41 indicators
+1990-1999: 49 indicators
+2000-2026: 58 indicators (full modern dataset)
 
 ====================================================================
 REQUIRED ATTRIBUTION
@@ -532,48 +616,6 @@ def get_compliance_footer():
 
 import requests
 from io import StringIO
-
-# ============================================================================
-# DEFINE ACTUAL INDICATORS (58 total)
-# ============================================================================
-
-REAL_INDICATORS = [
-    # Treasury Yields (10)
-    'DGS10', 'DGS2', 'DGS3MO', 'DGS30', 'DGS1', 'DGS3', 'DGS5', 'DGS6MO', 'DGS7', 'DGS20',
-    
-    # Fed Policy (5)
-    'FEDFUNDS', 'DFEDTARU', 'DFEDTARL', 'WALCL', 'TOTRESNS',
-    
-    # Inflation (7)
-    'CPIAUCSL', 'CPILFESL', 'PCEPI', 'PCEPILFE', 'T10YIE', 'T5YIE', 'CPI_YOY',
-    
-    # Labor Market (7)
-    'UNRATE', 'CIVPART', 'U6RATE', 'JTSJOL', 'JTSQUR', 'AWHAETP', 'TEMPHELPS',
-    
-    # Jobless Claims (3)
-    'IC4WSA', 'CC4WSA', 'ICSA',
-    
-    # Growth (3)
-    'GDPC1', 'INDPRO', 'RSAFS',
-    
-    # Housing (3)
-    'HOUST', 'PERMIT', 'RHORUSQ156N',
-    
-    # Money & Credit (5)
-    'M2SL', 'BAMLH0A0HYM2', 'TNWBSHNO', 'M2_REAL', 'M2_REAL_YOY',
-    
-    # Spreads (6)
-    '10Y2Y', '10Y3M', 'BAA_SPREAD', 'AAA_SPREAD', 'HY_SPREAD', 'RISK_APPETITE',
-    
-    # Market Fear (2)
-    'VIX', 'STLFSI4',
-    
-    # Dollar & Oil (2)
-    'DCOILWTICO', 'DTWEXBGS',
-    
-    # Demographics (1)
-    'MEHOINUSA672N'
-]
 
 @st.cache_data(ttl=3600)  # Cache for 1 hour
 def load_master_data():
@@ -655,6 +697,13 @@ def load_data_with_spinner():
 # ============================================================================
 # HELPER FUNCTIONS
 # ============================================================================
+
+def get_indicator_count(df):
+    """Count actual indicators (same method as analyzer)"""
+    return len([c for c in df.columns if c not in ['date', 'year', 'month', 'day'] 
+                and not c.endswith('_RAW') 
+                and not c.endswith('_IS_QUARTERLY')
+                and not c.endswith('_INV')])
 
 def get_latest_value(df, column, alternative_cols=None):
     """Get the latest non-NaN value for a column"""
@@ -875,7 +924,7 @@ def get_download_link(df, filename="gfti_sample.csv"):
     return href
 
 def get_coverage_summary(df):
-    """Get coverage summary by era"""
+    """Get coverage summary by era - DYNAMIC counting from actual data"""
     eras = [
         ('1960-1969', '1960-01-01', '1969-12-31'),
         ('1970-1979', '1970-01-01', '1979-12-31'),
@@ -887,19 +936,26 @@ def get_coverage_summary(df):
     ]
     
     coverage = []
+    
+    # Get all actual data columns (excluding helper columns)
+    data_cols = [c for c in df.columns if c not in ['date', 'year', 'month', 'day'] 
+                and not c.endswith('_RAW') 
+                and not c.endswith('_IS_QUARTERLY')
+                and not c.endswith('_INV')]
+    
     for era_name, start, end in eras:
         start_date = pd.to_datetime(start)
         end_date = pd.to_datetime(end)
         
-        # Count indicators with data in this era
+        # Count indicators that have ANY data in this era
         era_count = 0
-        for col in REAL_INDICATORS:
-            if col in df.columns:
-                has_data = df[(df['date'] >= start_date) & 
-                             (df['date'] <= end_date) & 
-                             (df[col].notna())].shape[0] > 0
-                if has_data:
-                    era_count += 1
+        for col in data_cols:
+            # Check if this column has any non-null data in the era
+            has_data = df[(df['date'] >= start_date) & 
+                         (df['date'] <= end_date) & 
+                         (df[col].notna())].shape[0] > 0
+            if has_data:
+                era_count += 1
         
         coverage.append((era_name, era_count))
     
@@ -909,7 +965,7 @@ def get_coverage_summary(df):
 # CRISIS MONITORING FUNCTIONS - Added March 2026
 # ============================================================================
 
-def check_crisis_signals(df, war_start_date="2026-02-23"):
+def check_crisis_signals(df, war_start_date=WAR_START_DATE):
     """
     Check all indicators and return active alerts based on crisis thresholds
     Used by both the Crisis Watch panel and Alert system
@@ -1107,7 +1163,12 @@ def display_crisis_watch(df, alerts):
     """
     
     st.markdown('<div class="sub-header">🚨 Crisis Watch: Iran-USA War Impact</div>', unsafe_allow_html=True)
-    st.markdown(f"*Monitoring since Feb 23, 2026 - Day {(datetime.now() - pd.to_datetime('2026-02-23')).days} of conflict*")
+    
+    # Calculate days since war started
+    war_start = pd.to_datetime(WAR_START_DATE)
+    days_since = (datetime.now() - war_start).days
+    
+    st.markdown(f"*Monitoring since Feb 28, 2026 - Day {days_since} of conflict*")
     
     # Create a dictionary of alerts by indicator for quick lookup
     alert_dict = {}
@@ -1268,7 +1329,7 @@ def display_crisis_watch(df, alerts):
 
 def display_war_timeline(df, before_values):
     """
-    Display the War Impact Timeline showing changes since Feb 23, 2026
+    Display the War Impact Timeline showing changes since Feb 28, 2026
     """
     
     st.markdown('<div class="sub-header">📅 War Impact Timeline</div>', unsafe_allow_html=True)
@@ -1290,7 +1351,7 @@ def display_war_timeline(df, before_values):
         <div style="display: flex; justify-content: space-between; align-items: center;">
             <div>
                 <span style="color: #FFD700; font-size: 1.2rem; font-weight: bold;">⚔️ Conflict Day {days_since}</span>
-                <span style="color: #888; margin-left: 10px;">(Feb 23 - {datetime.now().strftime('%b %d, %Y')})</span>
+                <span style="color: #888; margin-left: 10px;">(Feb 28 - {datetime.now().strftime('%b %d, %Y')})</span>
             </div>
             <div style="color: #ff4d4d;">{len([a for a in st.session_state.get('crisis_alerts', []) if '🔴' in a['level']])} Critical • {len([a for a in st.session_state.get('crisis_alerts', []) if '🟡' in a['level']])} Warning</div>
         </div>
@@ -1437,18 +1498,52 @@ with st.sidebar:
     df = load_data_with_spinner()
     
     if df is not None:
-        # Calculate actual counts by category
-        treasury_count = len([c for c in REAL_INDICATORS if c in ['DGS10', 'DGS2', 'DGS3MO', 'DGS30', 'DGS1', 'DGS3', 'DGS5', 'DGS6MO', 'DGS7', 'DGS20']])
-        fed_count = len([c for c in REAL_INDICATORS if c in ['FEDFUNDS', 'DFEDTARU', 'DFEDTARL', 'WALCL', 'TOTRESNS']])
-        labor_count = len([c for c in REAL_INDICATORS if c in ['UNRATE', 'CIVPART', 'U6RATE', 'JTSJOL', 'JTSQUR', 'AWHAETP', 'TEMPHELPS', 'IC4WSA', 'CC4WSA', 'ICSA']])
-        growth_count = len([c for c in REAL_INDICATORS if c in ['GDPC1', 'INDPRO', 'RSAFS', 'UMCSENT']])
-        housing_count = len([c for c in REAL_INDICATORS if c in ['HOUST', 'PERMIT', 'RHORUSQ156N']])
-        market_count = len([c for c in REAL_INDICATORS if c in ['VIX', 'STLFSI4', 'DCOILWTICO', 'DTWEXBGS', 'HY_SPREAD']])
-        money_count = len([c for c in REAL_INDICATORS if c in ['M2SL', 'TNWBSHNO', 'BAMLH0A0HYM2']])
-        inflation_count = len([c for c in REAL_INDICATORS if c in ['CPIAUCSL', 'CPILFESL', 'PCEPI', 'PCEPILFE', 'T10YIE', 'T5YIE', 'CPI_YOY']])
+        # Get actual indicator count using analyzer method
+        indicator_count = get_indicator_count(df)
         
         st.markdown(f"""
-        **{len(REAL_INDICATORS)} indicators** covering:
+        **{indicator_count} indicators** (50 raw FRED + 8 calculated)
+        """)
+        
+        # Add transparency expander
+        with st.expander("🔍 Raw vs Calculated Breakdown"):
+            st.markdown(f"""
+            **Raw FRED Series (50)**
+            - Treasury Yields (10)
+            - Fed Policy (5)
+            - Inflation (5 price levels)
+            - Inflation Expectations (2)
+            - Labor Market (7)
+            - Jobless Claims (3)
+            - Growth (3)
+            - Housing (3)
+            - Money & Credit (3)
+            - Market Fear (2)
+            - Dollar & Oil (2)
+            - Demographics (1)
+            
+            **Proprietary Calculations (8)**
+            - CPI_YOY (inflation rate)
+            - M2_REAL (real money supply)
+            - M2_REAL_YOY (real money growth)
+            - 10Y2Y, 10Y3M (yield spreads)
+            - BAA_SPREAD, AAA_SPREAD (credit spreads)
+            - HY_SPREAD (high yield spread)
+            - RISK_APPETITE (risk differential)
+            """)
+        
+        # Calculate counts by category
+        treasury_count = 10
+        fed_count = 5
+        labor_count = 10  # 7 labor + 3 claims
+        growth_count = 4   # 3 growth + 1 sentiment
+        housing_count = 3
+        market_count = 5   # 2 fear + 2 oil/dollar + 1 HY spread
+        money_count = 3    # M2SL, TNWBSHNO, BAMLH0A0HYM2
+        inflation_count = 7  # 5 price + 2 expectations
+        
+        st.markdown(f"""
+        **Categories:**
         
         **💰 Rates & Fed** ({treasury_count + fed_count})
         - Complete yield curve
@@ -1482,7 +1577,7 @@ with st.sidebar:
         st.markdown("### 📊 Dataset Stats")
         col1, col2 = st.columns(2)
         with col1:
-            st.metric("Indicators", f"{len(REAL_INDICATORS)}")
+            st.metric("Indicators", f"{indicator_count}")
         with col2:
             st.metric("Days", f"{len(df):,}")
         
@@ -1524,7 +1619,10 @@ with st.sidebar:
 # ============================================================================
 
 st.markdown('<div class="main-header">📊 GFTI Daily™</div>', unsafe_allow_html=True)
-st.markdown(f"*Complete US Financial History Database - {len(REAL_INDICATORS)} Indicators*")
+
+# Get indicator count
+indicator_count = get_indicator_count(df) if df is not None else 58
+st.markdown(f"*Complete US Financial History Database - {indicator_count} Indicators (50 raw FRED + 8 calculated)*")
 
 # Load data with spinner
 df = load_data_with_spinner()
@@ -1562,7 +1660,7 @@ tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "🔍 Historical Matches",
     "📦 Data Shop",
     "📋 Attribution & Legal",
-    "🎨 Visual Vault"  # New tab!
+    "🎨 Visual Vault"
 ])
 
 # ============================================================================
@@ -1605,7 +1703,7 @@ with tab1:
     # =========================================
     # CHECK FOR CRISIS SIGNALS AND STORE IN SESSION STATE
     # =========================================
-    alerts, before_values = check_crisis_signals(df, war_start_date="2026-02-23")
+    alerts, before_values = check_crisis_signals(df, war_start_date=WAR_START_DATE)
     st.session_state['crisis_alerts'] = alerts
     st.session_state['before_values'] = before_values
     
@@ -2037,7 +2135,7 @@ with tab1:
     """, unsafe_allow_html=True)
 
 # ============================================================================
-# TAB 2: HISTORY EXPLORER (ALL INDICATORS WITH ANNOTATIONS)
+# TAB 2: HISTORY EXPLORER - UPDATED DROPDOWN (58 indicators)
 # ============================================================================
 
 with tab2:
@@ -2051,88 +2149,84 @@ with tab2:
     </div>
     """, unsafe_allow_html=True)
     
-    # Comprehensive indicator dictionary organized by category
+    # Comprehensive indicator dictionary organized by category - based on analyzer output (58 total)
     indicators = {
-        # Rates & Yields
+        # Rates & Yields (10)
+        '💰 Rates: 1Y Treasury': 'DGS1',
         '💰 Rates: 10Y Treasury': 'DGS10',
         '💰 Rates: 2Y Treasury': 'DGS2',
+        '💰 Rates: 20Y Treasury': 'DGS20',
+        '💰 Rates: 3Y Treasury': 'DGS3',
         '💰 Rates: 30Y Treasury': 'DGS30',
         '💰 Rates: 3M Treasury': 'DGS3MO',
-        '💰 Rates: 1Y Treasury': 'DGS1',
-        '💰 Rates: 3Y Treasury': 'DGS3',
         '💰 Rates: 5Y Treasury': 'DGS5',
+        '💰 Rates: 6M Treasury': 'DGS6MO',
         '💰 Rates: 7Y Treasury': 'DGS7',
-        '💰 Rates: 20Y Treasury': 'DGS20',
         
-        # Fed Policy
-        '🏦 Fed: Fed Funds Rate': 'FEDFUNDS',
-        '🏦 Fed: Target Rate Upper': 'DFEDTARU',
+        # Fed Policy (5)
         '🏦 Fed: Target Rate Lower': 'DFEDTARL',
+        '🏦 Fed: Target Rate Upper': 'DFEDTARU',
+        '🏦 Fed: Fed Funds Rate': 'FEDFUNDS',
+        '🏦 Fed: Total Reserves': 'TOTRESNS',
         '🏦 Fed: Balance Sheet': 'WALCL',
-        '🏦 Fed: Real Fed Funds': 'REAL_FEDFUNDS',
         
-        # Spreads
-        '📐 Spread: 10Y-2Y': '10Y2Y',
-        '📐 Spread: 10Y-3M': '10Y3M',
-        '📐 Spread: BAA-10Y Credit': 'BAA_SPREAD',
-        '📐 Spread: AAA-10Y Credit': 'AAA_SPREAD',
-        '📐 Spread: High Yield': 'HY_SPREAD',
-        '📐 Spread: Risk Appetite (HY-BAA)': 'RISK_APPETITE',
-        
-        # Corporate Yields
-        '🏢 Corporate: BAA Yield': 'BAA10Y',
-        '🏢 Corporate: AAA Yield': 'AAA10Y',
-        
-        # Inflation
+        # Inflation (7)
         '📈 Inflation: CPI All Items': 'CPIAUCSL',
         '📈 Inflation: Core CPI': 'CPILFESL',
         '📈 Inflation: PCE': 'PCEPI',
         '📈 Inflation: Core PCE': 'PCEPILFE',
-        '📈 Inflation: CPI YoY': 'CPI_YOY',
         '📈 Inflation: 10Y Expectation': 'T10YIE',
         '📈 Inflation: 5Y Expectation': 'T5YIE',
+        '📈 Inflation: CPI YoY': 'CPI_YOY',
         
-        # Labor Market
-        '👥 Labor: Unemployment Rate': 'UNRATE',
-        '👥 Labor: U-6 Unemployment': 'U6RATE',
+        # Labor Market (7)
+        '👥 Labor: Avg Weekly Hours': 'AWHAETP',
         '👥 Labor: Participation Rate': 'CIVPART',
         '👥 Labor: Job Openings (JOLTS)': 'JTSJOL',
         '👥 Labor: Quits Rate': 'JTSQUR',
-        '👥 Labor: Initial Claims': 'IC4WSA',
-        '👥 Labor: Continued Claims': 'CC4WSA',
-        '👥 Labor: 4-Week Avg Claims': 'ICSA',
-        '👥 Labor: Avg Weekly Hours': 'AWHAETP',
         '👥 Labor: Temporary Help': 'TEMPHELPS',
+        '👥 Labor: U-6 Unemployment': 'U6RATE',
+        '👥 Labor: Unemployment Rate': 'UNRATE',
         
-        # Growth & Output
+        # Jobless Claims (3)
+        '📋 Claims: Continued Claims': 'CC4WSA',
+        '📋 Claims: Initial Claims': 'IC4WSA',
+        '📋 Claims: 4-Week Avg': 'ICSA',
+        
+        # Growth & Output (3)
         '📊 Growth: Real GDP': 'GDPC1',
         '📊 Growth: Industrial Production': 'INDPRO',
         '📊 Growth: Retail Sales': 'RSAFS',
         
-        # Housing
+        # Housing (3)
         '🏠 Housing: Starts': 'HOUST',
         '🏠 Housing: Permits': 'PERMIT',
         '🏠 Housing: Homeownership Rate': 'RHORUSQ156N',
         
-        # Consumer
-        '💳 Consumer: Sentiment': 'UMCSENT',
-        '💳 Consumer: Median Income': 'MEHOINUSA672N',
-        
-        # Money & Credit
+        # Money & Credit (5)
+        '💰 Money: High Yield Index': 'BAMLH0A0HYM2',
         '💰 Money: M2 Supply': 'M2SL',
         '💰 Money: M2 Real': 'M2_REAL',
         '💰 Money: M2 Real Growth': 'M2_REAL_YOY',
         '💰 Money: Household Net Worth': 'TNWBSHNO',
-        '💰 Money: Total Reserves': 'TOTRESNS',
         
-        # Market Indicators
+        # Spreads (6)
+        '📐 Spread: 10Y-2Y': '10Y2Y',
+        '📐 Spread: 10Y-3M': '10Y3M',
+        '📐 Spread: AAA-10Y Credit': 'AAA_SPREAD',
+        '📐 Spread: BAA-10Y Credit': 'BAA_SPREAD',
+        '📐 Spread: High Yield': 'HY_SPREAD',
+        '📐 Spread: Risk Appetite': 'RISK_APPETITE',
+        
+        # Market Indicators (5)
+        '😨 Market: Financial Stress': 'STLFSI4',
         '😨 Market: VIX Fear Gauge': 'VIX',
         '🛢️ Market: Oil Price (WTI)': 'DCOILWTICO',
         '💵 Market: Dollar Index': 'DTWEXBGS',
-        '📉 Market: Financial Stress': 'STLFSI4',
+        '📈 Market: Consumer Sentiment': 'UMCSENT',
         
-        # Demographics
-        '🌎 Demographics: Gini Coefficient': 'GINIALL',
+        # Demographics (1)
+        '🌎 Demographics: Median Income': 'MEHOINUSA672N',
     }
     
     col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
@@ -2300,11 +2394,13 @@ with tab3:
 with tab4:
     st.markdown('<div class="sub-header">📦 Complete US Economic Dataset</div>', unsafe_allow_html=True)
     
+    indicator_count = get_indicator_count(df)
+    
     st.markdown(f"""
     <div style="background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%); 
                 padding: 20px; border-radius: 8px; margin-bottom: 30px;">
-        <h2 style="color: #FFD700; margin: 0;">{len(REAL_INDICATORS)} Indicators • 64 Years • Daily Updates</h2>
-        <p style="color: #ccc; margin: 10px 0 0;">The complete story of the American economy, cleaned and ready to use.</p>
+        <h2 style="color: #FFD700; margin: 0;">{indicator_count} Indicators • 64 Years • Daily Updates</h2>
+        <p style="color: #ccc; margin: 10px 0 0;">(50 raw FRED series + 8 proprietary calculations)</p>
     </div>
     """, unsafe_allow_html=True)
     
@@ -2337,6 +2433,30 @@ with tab4:
         </div>
     </div>
     """, unsafe_allow_html=True)
+    
+    # Transparency expander
+    with st.expander("🔢 Raw vs Calculated Breakdown"):
+        st.markdown("""
+        | Type | Count | Examples |
+        |------|-------|----------|
+        | **Raw FRED Series** | 50 | DGS10, UNRATE, CPIAUCSL, M2SL, VIX |
+        | **Proprietary Calculations** | 8 | CPI_YOY, 10Y2Y, M2_REAL, HY_SPREAD |
+        | **TOTAL** | **58** | |
+        
+        **Proprietary Calculations Include:**
+        - **CPI_YOY** - Year-over-year inflation rate
+        - **M2_REAL** - Inflation-adjusted money supply
+        - **M2_REAL_YOY** - Real money supply growth
+        - **10Y2Y** - 10Y-2Y Treasury spread (recession indicator)
+        - **10Y3M** - 10Y-3M Treasury spread
+        - **BAA_SPREAD** - BAA corporate credit spread
+        - **AAA_SPREAD** - AAA corporate credit spread
+        - **HY_SPREAD** - High yield credit spread
+        - **RISK_APPETITE** - HY vs BAA spread differential
+        
+        We do the math so you don't have to. All spreads, real values, 
+        and growth rates are pre-calculated and ready to use.
+        """)
     
     # Coverage by era
     st.markdown("### 📅 Coverage by Era")
@@ -2388,7 +2508,7 @@ with tab4:
         **💵 Money & Credit** (5)
         - M2 money supply
         - Household net worth
-        - Credit spreads (BAA, AAA, HY)
+        - High yield spread
         
         **🌎 Demographics** (1)
         - Median household income
@@ -2399,7 +2519,7 @@ with tab4:
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.metric("Total Indicators", f"{len(REAL_INDICATORS)}")
+        st.metric("Total Indicators", f"{indicator_count}")
     with col2:
         st.metric("Date Range", f"{df['date'].min().year} - {df['date'].max().year}")
     with col3:
@@ -2503,7 +2623,7 @@ with tab4:
             <p><strong>You're already using the interactive dashboard for FREE.</strong> That's not changing.</p>
             <p>The waitlist is for people who want:</p>
             <ul>
-                <li><strong>The raw dataset</strong> - 58 indicators in CSV format</li>
+                <li><strong>The raw dataset</strong> - 58 indicators (50 raw FRED + 8 calculated) in CSV format</li>
                 <li><strong>Daily updates</strong> - Automated data delivery</li>
                 <li><strong>Proprietary calculations</strong> - Our spreads and ratios pre-calculated</li>
                 <li><strong>No cleaning needed</strong> - Gaps removed, weekends handled</li>
