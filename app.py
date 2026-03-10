@@ -20,6 +20,8 @@ import zipfile
 from io import BytesIO
 from pathlib import Path
 import visual_vault
+import time
+
 
 # ============================================================================
 # CONFIGURATION & SECRETS HANDLING
@@ -2760,9 +2762,34 @@ with tab5:
         mime="text/plain"
     )
 
-# In tab6:
+# ============================================================================
+# TAB 6: VISUAL VAULT - With Anti-Cache Measures for Animations
+# ============================================================================
+
 with tab6:
-    visual_vault.create_vault_tab(df, HISTORICAL_EVENTS)
+    # Initialize session state for Visual Vault
+    if 'vault_loaded' not in st.session_state:
+        st.session_state.vault_loaded = False
+    if 'vault_timestamp' not in st.session_state:
+        st.session_state.vault_timestamp = time.time()
+    if 'last_tab' not in st.session_state:
+        st.session_state.last_tab = None
+    
+    # Track when we enter this tab
+    if st.session_state.last_tab != 'vault':
+        st.session_state.vault_timestamp = time.time()
+        st.session_state.last_tab = 'vault'
+        st.session_state.vault_loaded = True
+        # Small delay to ensure clean render
+        time.sleep(0.1)
+        st.rerun()
+    
+    # Pass timestamp to force fresh render of animations
+    visual_vault.create_vault_tab(
+        df, 
+        HISTORICAL_EVENTS,
+        timestamp=st.session_state.vault_timestamp
+    )
 
 # ============================================================================
 # COMPLIANCE FOOTER (Added to every page)
