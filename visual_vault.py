@@ -388,7 +388,7 @@ def create_animation_buttons():
     )]
 
 # ============================================================================
-# HELPER FUNCTIONS FOR VULNERABILITY CLOCK - ADD THESE BEFORE create_vulnerability_clock
+# HELPER FUNCTIONS FOR VULNERABILITY CLOCK
 # ============================================================================
 
 def get_value_with_fallback(df, column, target_date):
@@ -842,12 +842,13 @@ def create_vulnerability_index(df, historical_events):
     return fig
 
 # ============================================================================
-# CHART 3: The Economic Carousel (Circular Bar Chart)
+# CHART 3: The Economic Carousel - With Extended Yield Display
 # ============================================================================
 
 def create_economic_carousel(df):
     """
-    Chart 3: Circular Bar Chart with colors that work in both light and dark mode
+    Chart 3: Circular Bar Chart - Yield % stays visible longer when aligned
+    Bars fade during rotation, return to full opacity when reset
     """
     
     # Calculate decade averages
@@ -888,6 +889,7 @@ def create_economic_carousel(df):
     # Create circular bar chart
     fig = go.Figure()
     
+    # Add the original trace
     fig.add_trace(go.Barpolar(
         r=yields,
         theta=decades,
@@ -896,7 +898,7 @@ def create_economic_carousel(df):
             color=colors,
             line=dict(color='white', width=2)
         ),
-        opacity=0.8,
+        opacity=1.0,
         text=[f"{y}%" for y in yields],
         hoverinfo='text+theta+r',
         name='10Y Yield by Decade',
@@ -904,9 +906,138 @@ def create_economic_carousel(df):
     ))
     
     # Adaptive text colors
-    title_color = '#D4AF37'  # Softer gold
+    title_color = '#D4AF37'
     axis_color = '#D4AF37'
     
+    # Create frames for rotation
+    frames = []
+    for rotation in range(0, 360, 3):
+        
+        # Calculate which decade line is aligned
+        base_angles = [i * (360 / len(decades)) for i in range(len(decades))]
+        aligned_text = ""
+        aligned_decade = None
+        aligned_yield = None
+        aligned_idx = None
+        
+        for i, base_angle in enumerate(base_angles):
+            effective_angle = (base_angle - rotation) % 360
+            if effective_angle < 10 or effective_angle > 350:
+                aligned_text = f"<b>{decades[i]}<br>{yields[i]}%</b>"
+                aligned_decade = decades[i]
+                aligned_yield = yields[i]
+                aligned_idx = i
+                break
+        
+        # Create frame with yield display
+        frame_layout = go.Layout(
+            polar=dict(
+                angularaxis=dict(rotation=rotation)
+            ),
+            annotations=[
+                dict(
+                    x=0.5, y=0.5,
+                    xref="paper", yref="paper",
+                    text=aligned_text,
+                    showarrow=False,
+                    font=dict(size=28, color='white', family='Arial Black'),
+                    bgcolor='rgba(0,0,0,0.9)',
+                    bordercolor='#D4AF37',
+                    borderwidth=4,
+                    borderpad=12,
+                    visible=True if aligned_text else False
+                ),
+                dict(
+                    x=0.5, y=-0.1,
+                    xref="paper", yref="paper",
+                    text=f"📍 Today: {today_display} ({today_str})",
+                    showarrow=False,
+                    font=dict(size=12, color=axis_color),
+                    align="center"
+                )
+            ]
+        )
+        
+        # If aligned, highlight the bar
+        if aligned_decade:
+            frame_data = [
+                go.Barpolar(
+                    r=yields,
+                    theta=decades,
+                    width=[30] * len(decades),
+                    marker=dict(
+                        color=colors,
+                        line=dict(color='white', width=2),
+                        opacity=0.4
+                    ),
+                    opacity=0.4,
+                    text=[f"{y}%" for y in yields],
+                    hoverinfo='text+theta+r'
+                ),
+                go.Barpolar(
+                    r=[aligned_yield],
+                    theta=[aligned_decade],
+                    width=[35],
+                    marker=dict(
+                        color=era_colors.get(decade_avg['decade'].iloc[aligned_idx], '#FFFFFF'),
+                        line=dict(color='gold', width=4),
+                        opacity=1.0
+                    ),
+                    opacity=1.0,
+                    text=[f"<b>{aligned_yield}%</b>"],
+                    hoverinfo='text'
+                )
+            ]
+        else:
+            frame_data = [go.Barpolar(
+                r=yields,
+                theta=decades,
+                width=[30] * len(decades),
+                marker=dict(
+                    color=colors,
+                    line=dict(color='white', width=2)
+                ),
+                opacity=0.4,
+                text=[f"{y}%" for y in yields],
+                hoverinfo='text+theta+r'
+            )]
+        
+        frame = go.Frame(
+            data=frame_data,
+            name=f'rotate_{rotation}',
+            layout=frame_layout
+        )
+        frames.append(frame)
+    
+    # Add a special frame for RESET at 345° (just outside popup window)
+    reset_frame = go.Frame(
+        data=[go.Barpolar(
+            r=yields,
+            theta=decades,
+            width=[30] * len(decades),
+            marker=dict(
+                color=colors,
+                line=dict(color='white', width=2),
+                opacity=1.0  # FULL OPACITY
+            ),
+            opacity=1.0,
+            text=[f"{y}%" for y in yields],
+            hoverinfo='text+theta+r'
+        )],
+        name='reset_state',
+        layout=go.Layout(
+            polar=dict(
+                angularaxis=dict(rotation=345)  # Start at 345°, NOT 0°
+            ),
+            annotations=[],  # NO POPUP
+        )
+    )
+    
+    # Insert the reset frame at the beginning
+    frames.insert(0, reset_frame)
+    fig.frames = frames
+    
+    # Base layout
     fig.update_layout(
         title=dict(
             text="🎪 The Economic Carousel: 10Y Yield by Decade",
@@ -919,11 +1050,15 @@ def create_economic_carousel(df):
                 range=[0, 16],
                 tickfont=dict(color='#9E9E9E', size=10),
                 gridcolor='rgba(158,158,158,0.2)',
+                gridwidth=1,
                 title=dict(text="Yield (%)", font=dict(color=axis_color))
             ),
             angularaxis=dict(
                 tickfont=dict(color=axis_color, size=12, family='Arial Black'),
-                gridcolor='rgba(158,158,158,0.2)',
+                gridcolor='#D4AF37',
+                gridwidth=3,
+                linewidth=3,
+                showline=True,
                 direction='clockwise'
             ),
             bgcolor='rgba(0,0,0,0)'
@@ -933,7 +1068,8 @@ def create_economic_carousel(df):
         height=600,
         width=600,
         showlegend=False,
-        margin=dict(l=40, r=40, t=80, b=40),
+        
+        # Today annotation
         annotations=[
             dict(
                 x=0.5, y=-0.1,
@@ -943,11 +1079,77 @@ def create_economic_carousel(df):
                 font=dict(size=12, color=axis_color),
                 align="center"
             )
-        ]
+        ],
+        
+        # Slider for manual rotation
+        sliders=[{
+            'active': 0,
+            'currentvalue': {'prefix': 'Rotation: '},
+            'pad': {'t': 50},
+            'steps': [
+                {'args': [[f'rotate_{r}'], {'frame': {'duration': 0, 'redraw': True},
+                                           'mode': 'immediate'}],
+                 'label': f'{r}°',
+                 'method': 'animate'}
+                for r in range(0, 360, 15)
+            ]
+        }],
+        
+        # Buttons
+        updatemenus=[
+            {
+                'type': 'buttons',
+                'buttons': [
+                    {'args': [None, {'frame': {'duration': 150, 'redraw': True},
+                                    'fromcurrent': True, 'mode': 'immediate'}],
+                     'label': '▶️ Play',
+                     'method': 'animate'}
+                ],
+                'direction': 'left',
+                'pad': {'r': 10, 't': 10},
+                'showactive': False,
+                'x': 0.0,
+                'y': 0,
+                'xanchor': 'left'
+            },
+            {
+                'type': 'buttons',
+                'buttons': [
+                    {'args': [[None], {'frame': {'duration': 0, 'redraw': False},
+                                      'mode': 'immediate'}],
+                     'label': '⏸️ Pause',
+                     'method': 'animate'}
+                ],
+                'direction': 'left',
+                'pad': {'r': 10, 't': 10},
+                'showactive': False,
+                'x': 0.1,
+                'y': 0,
+                'xanchor': 'left'
+            },
+            {
+                'type': 'buttons',
+                'buttons': [
+                    {'args': [['reset_state'],
+                             {'frame': {'duration': 0, 'redraw': True},
+                              'mode': 'immediate',
+                              'fromcurrent': False}],
+                     'label': '🔄 Reset',
+                     'method': 'animate'}
+                ],
+                'direction': 'left',
+                'pad': {'r': 10, 't': 10},
+                'showactive': False,
+                'x': 0.2,
+                'y': 0,
+                'xanchor': 'left'
+            }
+        ],
+        
+        margin=dict(l=40, r=40, t=80, b=40)
     )
     
     return fig
-
 # ============================================================================
 # CHART 4: THE ECONOMIC COMPASS - SIMPLE BUT POWERFUL
 # ============================================================================
@@ -1368,51 +1570,8 @@ def create_inflation_story(df):
     return fig
 
 # ============================================================================
-# CHART 8: THE VULNERABILITY CLOCK - WITH FALLBACK VALUES (FIXED)
+# CHART 8: THE VULNERABILITY CLOCK
 # ============================================================================
-
-def get_value_with_fallback(df, column, target_date):
-    """
-    Get value for a specific date, falling back to most recent non-null value
-    """
-    if column not in df.columns:
-        return None
-    
-    # Try to get value at exact date
-    mask = df['date'] == target_date
-    if mask.any():
-        val = df.loc[mask, column].iloc[0]
-        if not pd.isna(val):
-            return val
-    
-    # Fall back to most recent value before target_date
-    mask = df['date'] <= target_date
-    valid_data = df[mask & df[column].notna()]
-    if not valid_data.empty:
-        return valid_data.iloc[-1][column]
-    
-    return None
-
-def normalize_by_column(column, value):
-    """Normalize a raw value to 0-100 stress scale based on column type"""
-    if column == '10Y2Y':
-        return normalize_curve_stress(value)
-    elif column == 'HY_SPREAD':
-        return normalize_credit_stress(value)
-    elif column == 'UNRATE':
-        return normalize_labor_stress(value)
-    elif column == 'CPI_YOY':
-        return normalize_inflation_stress(value)
-    elif column == 'VIX':
-        return normalize_vix_stress(value)
-    elif column == 'HOUST':
-        return normalize_housing_stress(value)
-    elif column == 'DTWEXBGS':
-        return normalize_dollar_stress(value)
-    elif column == 'UMCSENT':
-        return normalize_sentiment_stress(value)
-    else:
-        return 50
 
 def create_vulnerability_clock(df):
     """
