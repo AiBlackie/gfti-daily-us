@@ -842,20 +842,18 @@ def create_vulnerability_index(df, historical_events):
     return fig
 
 # ============================================================================
-# CHART 3: The Economic Carousel - With Anti-Cache Measures
+# CHART 3: The Economic Carousel - With Streamlit State Management
 # ============================================================================
 
 def create_economic_carousel(df, chart_key="carousel", force_recreate=False):
     """
-    Chart 3: Circular Bar Chart - With anti-cache measures for Streamlit Cloud
+    Chart 3: Circular Bar Chart - With state management for animations
     """
     
-    # Force recreation if needed (for fullscreen)
-    if force_recreate:
-        st.cache_data.clear()
-    
-    # Add a timestamp to force redraw on fullscreen
-    timestamp = datetime.now().strftime("%H%M%S")
+    # Initialize session state for this specific chart instance
+    if f'{chart_key}_initialized' not in st.session_state or force_recreate:
+        st.session_state[f'{chart_key}_initialized'] = True
+        st.session_state[f'{chart_key}_play_count'] = 0
     
     # Calculate decade averages
     df['decade'] = (df['date'].dt.year // 10) * 10
@@ -2649,16 +2647,18 @@ def create_dashboard_figure(df):
     return fig
 
 # ============================================================================
-# MAIN TAB FUNCTION - UPDATED WITH MINARD-INSPIRED CHART 1 AND DOCUMENTATION
+# MAIN TAB FUNCTION - UPDATED WITH FULLSCREEN FIX
 # ============================================================================
 
-def create_vault_tab(df, historical_events, timestamp=None):
+def create_vault_tab(df, historical_events, view_mode='thumbnail', fullscreen_id=None):
     """Main function to create the Visual Vault tab"""
     
-    # Use timestamp to force cache refresh if needed
-    if timestamp:
-        # This ensures animations are fresh when returning to tab
-        pass
+    # Reset fullscreen state if needed
+    if view_mode == 'thumbnail' and fullscreen_id:
+        # Coming back from fullscreen
+        for chart in CHART_METADATA:
+            if st.session_state.get(f'fullscreen_{chart["id"]}', False):
+                st.session_state[f'fullscreen_{chart["id"]}'] = False
     
     st.markdown("""
     <div style="text-align: center; margin-bottom: 20px;">
@@ -2736,69 +2736,72 @@ def create_vault_tab(df, historical_events, timestamp=None):
             with col3:
                 if st.button("✕ Close", key=f"close_modal_{chart['id']}"):
                     st.session_state[f'fullscreen_{chart["id"]}'] = False
+                    st.session_state.return_from_fullscreen = True
                     st.rerun()
             
-            # Generate and display the fullscreen chart with force_recreate=True
+            # Generate and display the fullscreen chart
             if chart['id'] == 1:
                 fig = create_american_yield_eras(df)
                 fig.update_layout(height=700)
-                st.plotly_chart(fig, use_container_width=True, key=f"fullscreen_{chart['id']}_{timestamp}")
+                st.plotly_chart(fig, use_container_width=True, key=f"fullscreen_{chart['id']}")
             
             elif chart['id'] == 2:
                 fig = create_vulnerability_index(df, historical_events)
                 fig.update_layout(height=700)
-                st.plotly_chart(fig, use_container_width=True, key=f"fullscreen_{chart['id']}_{timestamp}")
+                st.plotly_chart(fig, use_container_width=True, key=f"fullscreen_{chart['id']}")
             
             elif chart['id'] == 3:
-                # Force recreate for fullscreen to ensure animations work
+                # Create a fresh chart for fullscreen with unique key
                 fig = create_economic_carousel(df, chart_key=f"fullscreen_{chart['id']}", force_recreate=True)
                 fig.update_layout(height=700)
-                st.plotly_chart(fig, use_container_width=True, key=f"fullscreen_{chart['id']}_{timestamp}")
-            
+                # Use a unique key with counter to force fresh instance
+                unique_key = f"fullscreen_{chart['id']}_{st.session_state.get('vault_key_counter', 0)}"
+                st.plotly_chart(fig, use_container_width=True, key=unique_key)            
+
             elif chart['id'] == 4:
                 fig = create_economic_compass(df)
                 fig.update_layout(height=700)
-                st.plotly_chart(fig, use_container_width=True, key=f"fullscreen_{chart['id']}_{timestamp}")
+                st.plotly_chart(fig, use_container_width=True, key=f"fullscreen_{chart['id']}")
             
             elif chart['id'] == 5:
                 fig = create_fed_footprint(df)
                 fig.update_layout(height=700)
-                st.plotly_chart(fig, use_container_width=True, key=f"fullscreen_{chart['id']}_{timestamp}")
+                st.plotly_chart(fig, use_container_width=True, key=f"fullscreen_{chart['id']}")
             
             elif chart['id'] == 6:
                 fig = create_real_unemployment_gap(df)
                 fig.update_layout(height=700)
-                st.plotly_chart(fig, use_container_width=True, key=f"fullscreen_{chart['id']}_{timestamp}")
+                st.plotly_chart(fig, use_container_width=True, key=f"fullscreen_{chart['id']}")
             
             elif chart['id'] == 7:
                 fig = create_inflation_story(df)
                 fig.update_layout(height=700)
-                st.plotly_chart(fig, use_container_width=True, key=f"fullscreen_{chart['id']}_{timestamp}")
+                st.plotly_chart(fig, use_container_width=True, key=f"fullscreen_{chart['id']}")
             
             elif chart['id'] == 8:
                 fig = create_vulnerability_clock(df)
                 fig.update_layout(height=700)
-                st.plotly_chart(fig, use_container_width=True, key=f"fullscreen_{chart['id']}_{timestamp}")
+                st.plotly_chart(fig, use_container_width=True, key=f"fullscreen_{chart['id']}")
             
             elif chart['id'] == 9:
                 fig = create_era_comparison_figure(df)
                 fig.update_layout(height=700)
-                st.plotly_chart(fig, use_container_width=True, key=f"fullscreen_{chart['id']}_{timestamp}")
+                st.plotly_chart(fig, use_container_width=True, key=f"fullscreen_{chart['id']}")
             
             elif chart['id'] == 10:
                 fig = create_fear_timeline(df, historical_events)
                 fig.update_layout(height=700)
-                st.plotly_chart(fig, use_container_width=True, key=f"fullscreen_{chart['id']}_{timestamp}")
+                st.plotly_chart(fig, use_container_width=True, key=f"fullscreen_{chart['id']}")
             
             elif chart['id'] == 11:
                 fig = create_housing_cycle(df)
                 fig.update_layout(height=700)
-                st.plotly_chart(fig, use_container_width=True, key=f"fullscreen_{chart['id']}_{timestamp}")
+                st.plotly_chart(fig, use_container_width=True, key=f"fullscreen_{chart['id']}")
             
             elif chart['id'] == 12:
                 fig = create_dashboard_figure(df)
                 fig.update_layout(height=700)
-                st.plotly_chart(fig, use_container_width=True, key=f"fullscreen_{chart['id']}_{timestamp}")
+                st.plotly_chart(fig, use_container_width=True, key=f"fullscreen_{chart['id']}")
             
             break
     
@@ -2827,42 +2830,42 @@ def create_vault_tab(df, historical_events, timestamp=None):
                                 if chart['id'] == 1:
                                     fig = create_american_yield_eras(df)
                                     fig.update_layout(height=300)
-                                    st.plotly_chart(fig, use_container_width=True, key=f"thumb_{chart['id']}_{timestamp}")
+                                    st.plotly_chart(fig, use_container_width=True, key=f"thumb_{chart['id']}")
                                 
                                 elif chart['id'] == 2:
                                     fig = create_vulnerability_index(df, historical_events)
                                     fig.update_layout(height=300)
-                                    st.plotly_chart(fig, use_container_width=True, key=f"thumb_{chart['id']}_{timestamp}")
+                                    st.plotly_chart(fig, use_container_width=True, key=f"thumb_{chart['id']}")
                                 
                                 elif chart['id'] == 3:
                                     fig = create_economic_carousel(df, chart_key=f"thumb_{chart['id']}")
                                     fig.update_layout(height=300)
-                                    st.plotly_chart(fig, use_container_width=True, key=f"thumb_{chart['id']}_{timestamp}")
+                                    st.plotly_chart(fig, use_container_width=True, key=f"thumb_{chart['id']}")
                                 
                                 elif chart['id'] == 4:
                                     fig = create_economic_compass(df)
                                     fig.update_layout(height=300)
-                                    st.plotly_chart(fig, use_container_width=True, key=f"thumb_{chart['id']}_{timestamp}")
+                                    st.plotly_chart(fig, use_container_width=True, key=f"thumb_{chart['id']}")
                                 
                                 elif chart['id'] == 5:
                                     fig = create_fed_footprint(df)
                                     fig.update_layout(height=300)
-                                    st.plotly_chart(fig, use_container_width=True, key=f"thumb_{chart['id']}_{timestamp}")
+                                    st.plotly_chart(fig, use_container_width=True, key=f"thumb_{chart['id']}")
                                 
                                 elif chart['id'] == 6:
                                     fig = create_real_unemployment_gap(df)
                                     fig.update_layout(height=300)
-                                    st.plotly_chart(fig, use_container_width=True, key=f"thumb_{chart['id']}_{timestamp}")
+                                    st.plotly_chart(fig, use_container_width=True, key=f"thumb_{chart['id']}")
                                 
                                 elif chart['id'] == 7:
                                     fig = create_inflation_story(df)
                                     fig.update_layout(height=300)
-                                    st.plotly_chart(fig, use_container_width=True, key=f"thumb_{chart['id']}_{timestamp}")
+                                    st.plotly_chart(fig, use_container_width=True, key=f"thumb_{chart['id']}")
                                 
                                 elif chart['id'] == 8:
                                     fig = create_vulnerability_clock(df)
                                     fig.update_layout(height=300)
-                                    st.plotly_chart(fig, use_container_width=True, key=f"thumb_{chart['id']}_{timestamp}")
+                                    st.plotly_chart(fig, use_container_width=True, key=f"thumb_{chart['id']}")
                                 
                                 elif chart['id'] == 9:
                                     create_era_comparison(df)
@@ -2870,12 +2873,12 @@ def create_vault_tab(df, historical_events, timestamp=None):
                                 elif chart['id'] == 10:
                                     fig = create_fear_timeline(df, historical_events)
                                     fig.update_layout(height=300)
-                                    st.plotly_chart(fig, use_container_width=True, key=f"thumb_{chart['id']}_{timestamp}")
+                                    st.plotly_chart(fig, use_container_width=True, key=f"thumb_{chart['id']}")
                                 
                                 elif chart['id'] == 11:
                                     fig = create_housing_cycle(df)
                                     fig.update_layout(height=300)
-                                    st.plotly_chart(fig, use_container_width=True, key=f"thumb_{chart['id']}_{timestamp}")
+                                    st.plotly_chart(fig, use_container_width=True, key=f"thumb_{chart['id']}")
                                 
                                 elif chart['id'] == 12:
                                     create_complete_dashboard(df)

@@ -2761,34 +2761,34 @@ with tab5:
         file_name=f"GFTI_Daily_README_{datetime.now().strftime('%Y%m%d')}.txt",
         mime="text/plain"
     )
-
 # ============================================================================
-# TAB 6: VISUAL VAULT - With Anti-Cache Measures for Animations
+# TAB 6: VISUAL VAULT - Fixed for Fullscreen Animation
 # ============================================================================
 
 with tab6:
     # Initialize session state for Visual Vault
-    if 'vault_loaded' not in st.session_state:
-        st.session_state.vault_loaded = False
-    if 'vault_timestamp' not in st.session_state:
-        st.session_state.vault_timestamp = time.time()
+    if 'vault_view_mode' not in st.session_state:
+        st.session_state.vault_view_mode = 'thumbnail'
+    if 'fullscreen_chart_id' not in st.session_state:
+        st.session_state.fullscreen_chart_id = None
+    if 'vault_key_counter' not in st.session_state:
+        st.session_state.vault_key_counter = 0
+    
+    # Track when we enter this tab
     if 'last_tab' not in st.session_state:
         st.session_state.last_tab = None
     
-    # Track when we enter this tab
+    # If we're switching to this tab, increment counter to force fresh charts
     if st.session_state.last_tab != 'vault':
-        st.session_state.vault_timestamp = time.time()
+        st.session_state.vault_key_counter += 1
         st.session_state.last_tab = 'vault'
-        st.session_state.vault_loaded = True
-        # Small delay to ensure clean render
-        time.sleep(0.1)
-        st.rerun()
     
-    # Pass timestamp to force fresh render of animations
+    # Call the vault tab function with ALL required parameters
     visual_vault.create_vault_tab(
         df, 
         HISTORICAL_EVENTS,
-        timestamp=st.session_state.vault_timestamp
+        view_mode=st.session_state.vault_view_mode,
+        fullscreen_id=st.session_state.fullscreen_chart_id
     )
 
 # ============================================================================
