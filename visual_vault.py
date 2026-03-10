@@ -108,13 +108,21 @@ CHART_METADATA = [
 ]
 
 # ============================================================================
-# SAFE DATE HANDLING FUNCTION
+# SAFE DATE HANDLING FUNCTION - FIXED FOR NaT
 # ============================================================================
 
 def safe_strftime(date_obj, format_string):
-    """Safely format a date, handling both string and datetime objects"""
+    """Safely format a date, handling both string and datetime objects, and NaT"""
     if date_obj is None:
         return "Unknown"
+    
+    # Check for NaT (pandas Not a Time)
+    try:
+        if pd.isna(date_obj):
+            return "Unknown"
+    except:
+        pass
+    
     if isinstance(date_obj, str):
         try:
             date_obj = pd.to_datetime(date_obj, format='%d/%m/%Y', dayfirst=True)
@@ -123,10 +131,17 @@ def safe_strftime(date_obj, format_string):
                 date_obj = pd.to_datetime(date_obj)
             except:
                 return str(date_obj)
+    
     if hasattr(date_obj, 'strftime'):
-        return date_obj.strftime(format_string)
+        try:
+            # Additional check for NaT
+            if pd.isna(date_obj):
+                return "Unknown"
+            return date_obj.strftime(format_string)
+        except:
+            return "Unknown"
+    
     return str(date_obj)
-
 # ============================================================================
 # UTILITY FUNCTIONS
 # ============================================================================

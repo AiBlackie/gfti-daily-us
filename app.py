@@ -985,6 +985,14 @@ def check_crisis_signals(df, war_start_date=WAR_START_DATE):
     claims_val, claims_date = get_latest_value(df, 'IC4WSA')
     unrate_val, unrate_date = get_latest_value(df, 'UNRATE')
     
+    # Convert None to NaT for safety (but we'll handle formatting elsewhere)
+    vix_date = pd.NaT if vix_date is None else vix_date
+    oil_date = pd.NaT if oil_date is None else oil_date
+    spread_date = pd.NaT if spread_date is None else spread_date
+    hy_date = pd.NaT if hy_date is None else hy_date
+    sent_date = pd.NaT if sent_date is None else sent_date
+    claims_date = pd.NaT if claims_date is None else claims_date
+    
     # Get before-war values (for context)
     before_war = df[df['date'] < war_start]
     
@@ -1185,6 +1193,19 @@ def display_crisis_watch(df, alerts):
     sent_val, sent_date = get_latest_value(df, 'UMCSENT')
     claims_val, claims_date = get_latest_value(df, 'IC4WSA')
     
+    # Helper function to safely format dates
+    def safe_date_format(date_val):
+        if date_val is None:
+            return "N/A"
+        try:
+            # Check if it's a valid datetime and not NaT
+            if hasattr(date_val, 'strftime') and not pd.isna(date_val):
+                return date_val.strftime('%b %d, %Y')
+            else:
+                return "N/A"
+        except:
+            return "N/A"
+    
     # Create 3 rows of 2 columns for the 6 indicators
     row1_col1, row1_col2 = st.columns(2)
     row2_col1, row2_col2 = st.columns(2)
@@ -1209,7 +1230,7 @@ def display_crisis_watch(df, alerts):
                 <span style="color: {border_color};">{status}</span>
             </div>
             <div style="font-size: 1.8rem; color: white; font-weight: bold;">{format_value(vix_val, 1)}</div>
-            <div style="color: #888;">as of {vix_date.strftime('%b %d, %Y') if vix_date else 'N/A'}</div>
+            <div style="color: #888;">as of {safe_date_format(vix_date)}</div>
         </div>
         """, unsafe_allow_html=True)
     
@@ -1231,7 +1252,7 @@ def display_crisis_watch(df, alerts):
                 <span style="color: {border_color};">{status}</span>
             </div>
             <div style="font-size: 1.8rem; color: white; font-weight: bold;">{format_value(oil_val, 2, '$')}</div>
-            <div style="color: #888;">as of {oil_date.strftime('%b %d, %Y') if oil_date else 'N/A'}</div>
+            <div style="color: #888;">as of {safe_date_format(oil_date)}</div>
         </div>
         """, unsafe_allow_html=True)
     
@@ -1255,7 +1276,7 @@ def display_crisis_watch(df, alerts):
                 <span style="color: {border_color};">{status}</span>
             </div>
             <div style="font-size: 1.8rem; color: white; font-weight: bold;">{spread_display}</div>
-            <div style="color: #888;">as of {spread_date.strftime('%b %d, %Y') if spread_date else 'N/A'}</div>
+            <div style="color: #888;">as of {safe_date_format(spread_date)}</div>
         </div>
         """, unsafe_allow_html=True)
     
@@ -1278,7 +1299,7 @@ def display_crisis_watch(df, alerts):
                 <span style="color: {border_color};">{status}</span>
             </div>
             <div style="font-size: 1.8rem; color: white; font-weight: bold;">{hy_display}</div>
-            <div style="color: #888;">as of {hy_date.strftime('%b %d, %Y') if hy_date else 'N/A'}</div>
+            <div style="color: #888;">as of {safe_date_format(hy_date)}</div>
         </div>
         """, unsafe_allow_html=True)
     
@@ -1301,7 +1322,7 @@ def display_crisis_watch(df, alerts):
                 <span style="color: {border_color};">{status}</span>
             </div>
             <div style="font-size: 1.8rem; color: white; font-weight: bold;">{format_value(sent_val, 1)}</div>
-            <div style="color: #888;">as of {sent_date.strftime('%b %d, %Y') if sent_date else 'N/A'}</div>
+            <div style="color: #888;">as of {safe_date_format(sent_date)}</div>
         </div>
         """, unsafe_allow_html=True)
     
@@ -1324,7 +1345,7 @@ def display_crisis_watch(df, alerts):
                 <span style="color: {border_color};">{status}</span>
             </div>
             <div style="font-size: 1.8rem; color: white; font-weight: bold;">{claims_display}</div>
-            <div style="color: #888;">as of {claims_date.strftime('%b %d, %Y') if claims_date else 'N/A'}</div>
+            <div style="color: #888;">as of {safe_date_format(claims_date)}</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -1343,6 +1364,18 @@ def display_war_timeline(df, before_values):
     hy_val, hy_date = get_latest_value(df, 'HY_SPREAD')
     sent_val, sent_date = get_latest_value(df, 'UMCSENT')
     claims_val, claims_date = get_latest_value(df, 'IC4WSA')
+    
+    # Helper function to safely format dates
+    def safe_date_format(date_val):
+        if date_val is None:
+            return "N/A"
+        try:
+            if hasattr(date_val, 'strftime') and not pd.isna(date_val):
+                return date_val.strftime('%b %d, %Y')
+            else:
+                return "N/A"
+        except:
+            return "N/A"
     
     # Calculate days since war started
     war_start = before_values['war_start']
@@ -1466,11 +1499,22 @@ def display_alert_system(alerts):
                 """, unsafe_allow_html=True)
                 
                 for alert in alerts:
+                    # FIX: Safely handle date formatting
+                    date_str = "N/A"
+                    if alert['date'] is not None:
+                        try:
+                            # Check if it's a valid datetime and not NaT
+                            if hasattr(alert['date'], 'strftime') and not pd.isna(alert['date']):
+                                date_str = alert['date'].strftime('%b %d, %Y')
+                        except:
+                            # If any error in date formatting, just use N/A
+                            pass
+                    
                     st.markdown(f"""
                     <div style="background: {alert['color']}10; padding: 8px; border-radius: 5px; margin: 5px 0; border-left: 3px solid {alert['color']};">
                         <span style="color: {alert['color']};">{alert['level']}</span><br>
                         <span style="color: white;">{alert['message']}</span><br>
-                        <span style="color: #888; font-size: 0.8rem;">{alert['date'].strftime('%b %d, %Y') if alert['date'] else 'N/A'}</span>
+                        <span style="color: #888; font-size: 0.8rem;">as of {date_str}</span>
                     </div>
                     """, unsafe_allow_html=True)
         else:
@@ -1480,7 +1524,6 @@ def display_alert_system(alerts):
                 <span style="color: #00ff00;">✅ No active alerts</span>
             </div>
             """, unsafe_allow_html=True)
-
 # ============================================================================
 # SIDEBAR
 # ============================================================================
@@ -1692,6 +1735,18 @@ with tab1:
     hy_val, hy_date = get_latest_value(df, 'HY_SPREAD', ['HY_SPREAD', 'BAMLH0A0HYM2'])
     oil_val, oil_date = get_latest_value(df, 'DCOILWTICO', ['DCOILWTICO'])
     
+    # Helper function to safely format dates for display
+    def safe_date_short(date_val):
+        if date_val is None:
+            return ""
+        try:
+            if hasattr(date_val, 'strftime') and not pd.isna(date_val):
+                return f" ({date_val.strftime('%m/%d/%y')})"
+            else:
+                return ""
+        except:
+            return ""
+    
     # Date header
     st.markdown(f"""
     <div class="story-card">
@@ -1699,7 +1754,6 @@ with tab1:
         <p style="margin: 5px 0 0; opacity: 0.9;">Most recent available data (as of {df['date'].max().strftime('%B %d, %Y')})</p>
     </div>
     """, unsafe_allow_html=True)
-
 
     
     # =========================================
@@ -1818,7 +1872,7 @@ with tab1:
     col1, col2, col3, col4, col5 = st.columns(5)
     
     with col1:
-        date_str = f" ({dgs10_date.strftime('%m/%d/%y')})" if dgs10_date else ""
+        date_str = safe_date_short(dgs10_date)
         st.markdown(f"""
         <div class="metric-card">
             <div class="metric-label">10Y YIELD{date_str}</div>
@@ -1827,7 +1881,7 @@ with tab1:
         """, unsafe_allow_html=True)
     
     with col2:
-        date_str = f" ({dgs2_date.strftime('%m/%d/%y')})" if dgs2_date else ""
+        date_str = safe_date_short(dgs2_date)
         st.markdown(f"""
         <div class="metric-card">
             <div class="metric-label">2Y YIELD{date_str}</div>
@@ -1836,7 +1890,7 @@ with tab1:
         """, unsafe_allow_html=True)
     
     with col3:
-        date_str = f" ({fed_date.strftime('%m/%d/%y')})" if fed_date else ""
+        date_str = safe_date_short(fed_date)
         st.markdown(f"""
         <div class="metric-card">
             <div class="metric-label">FED FUNDS{date_str}</div>
@@ -1847,7 +1901,7 @@ with tab1:
     with col4:
         if spread_val is not None:
             spread_color = "#ff4d4d" if spread_val < 0 else "#00ff00"
-            date_str = f" ({spread_date.strftime('%m/%d/%y')})" if spread_date else ""
+            date_str = safe_date_short(spread_date)
             st.markdown(f"""
             <div class="metric-card" style="border-left-color: {spread_color};">
                 <div class="metric-label">10Y-2Y SPREAD{date_str}</div>
@@ -1864,7 +1918,7 @@ with tab1:
             """, unsafe_allow_html=True)
     
     with col5:
-        date_str = f" ({real_fed_date.strftime('%m/%d/%y')})" if real_fed_date else ""
+        date_str = safe_date_short(real_fed_date)
         st.markdown(f"""
         <div class="metric-card">
             <div class="metric-label">REAL FED FUNDS{date_str}</div>
@@ -1879,7 +1933,7 @@ with tab1:
     with col1:
         if unrate_val is not None:
             color = "#00ff00" if unrate_val < 5 else "#ff4d4d" if unrate_val > 6 else "#FFD700"
-            date_str = f" ({unrate_date.strftime('%m/%d/%y')})" if unrate_date else ""
+            date_str = safe_date_short(unrate_date)
             st.markdown(f"""
             <div class="metric-card" style="border-left-color: {color};">
                 <div class="metric-label">UNEMPLOYMENT{date_str}</div>
@@ -1895,7 +1949,7 @@ with tab1:
             """, unsafe_allow_html=True)
     
     with col2:
-        date_str = f" ({u6_date.strftime('%m/%d/%y')})" if u6_date else ""
+        date_str = safe_date_short(u6_date)
         st.markdown(f"""
         <div class="metric-card">
             <div class="metric-label">U-6 UNEMPLOYMENT{date_str}</div>
@@ -1904,7 +1958,7 @@ with tab1:
         """, unsafe_allow_html=True)
     
     with col3:
-        date_str = f" ({jolts_date.strftime('%m/%d/%y')})" if jolts_date else ""
+        date_str = safe_date_short(jolts_date)
         jolts_display = f"{jolts_val/1000:.1f}M" if jolts_val is not None else "N/A"
         st.markdown(f"""
         <div class="metric-card">
@@ -1917,7 +1971,7 @@ with tab1:
         if claims_val is not None:
             claims_display = f"{claims_val/1000:.0f}K"
             color = "#00ff00" if claims_val < 250000 else "#ff4d4d" if claims_val > 350000 else "#FFD700"
-            date_str = f" ({claims_date.strftime('%m/%d/%y')})" if claims_date else ""
+            date_str = safe_date_short(claims_date)
             st.markdown(f"""
             <div class="metric-card" style="border-left-color: {color};">
                 <div class="metric-label">INITIAL CLAIMS{date_str}</div>
@@ -1933,7 +1987,7 @@ with tab1:
             """, unsafe_allow_html=True)
     
     with col5:
-        date_str = f" ({civpart_date.strftime('%m/%d/%y')})" if civpart_date else ""
+        date_str = safe_date_short(civpart_date)
         st.markdown(f"""
         <div class="metric-card">
             <div class="metric-label">PARTICIPATION{date_str}</div>
@@ -1948,7 +2002,7 @@ with tab1:
     with col1:
         if cpi_val is not None:
             color = "#ff4d4d" if cpi_val > 4 else "#00ff00" if cpi_val < 2.5 else "#FFD700"
-            date_str = f" ({cpi_date.strftime('%m/%d/%y')})" if cpi_date else ""
+            date_str = safe_date_short(cpi_date)
             st.markdown(f"""
             <div class="metric-card" style="border-left-color: {color};">
                 <div class="metric-label">CPI (YOY){date_str}</div>
@@ -1964,7 +2018,7 @@ with tab1:
             """, unsafe_allow_html=True)
     
     with col2:
-        date_str = f" ({pce_date.strftime('%m/%d/%y')})" if pce_date else ""
+        date_str = safe_date_short(pce_date)
         st.markdown(f"""
         <div class="metric-card">
             <div class="metric-label">CORE PCE{date_str}</div>
@@ -1973,7 +2027,7 @@ with tab1:
         """, unsafe_allow_html=True)
     
     with col3:
-        date_str = f" ({tie_date.strftime('%m/%d/%y')})" if tie_date else ""
+        date_str = safe_date_short(tie_date)
         st.markdown(f"""
         <div class="metric-card">
             <div class="metric-label">10Y INFLATION EXPECTATION{date_str}</div>
@@ -1984,7 +2038,7 @@ with tab1:
     with col4:
         if sent_val is not None:
             color = "#00ff00" if sent_val > 80 else "#ff4d4d" if sent_val < 60 else "#FFD700"
-            date_str = f" ({sent_date.strftime('%m/%d/%y')})" if sent_date else ""
+            date_str = safe_date_short(sent_date)
             st.markdown(f"""
             <div class="metric-card" style="border-left-color: {color};">
                 <div class="metric-label">CONSUMER SENTIMENT{date_str}</div>
@@ -2000,7 +2054,7 @@ with tab1:
             """, unsafe_allow_html=True)
     
     with col5:
-        date_str = f" ({retail_date.strftime('%m/%d/%y')})" if retail_date else ""
+        date_str = safe_date_short(retail_date)
         retail_display = f"${retail_val/1000:.0f}B" if retail_val is not None else "N/A"
         st.markdown(f"""
         <div class="metric-card">
@@ -2014,7 +2068,7 @@ with tab1:
     col1, col2, col3, col4, col5 = st.columns(5)
     
     with col1:
-        date_str = f" ({hous_date.strftime('%m/%d/%y')})" if hous_date else ""
+        date_str = safe_date_short(hous_date)
         hous_display = f"{hous_val/1000:.1f}M" if hous_val is not None else "N/A"
         st.markdown(f"""
         <div class="metric-card">
@@ -2024,7 +2078,7 @@ with tab1:
         """, unsafe_allow_html=True)
     
     with col2:
-        date_str = f" ({permit_date.strftime('%m/%d/%y')})" if permit_date else ""
+        date_str = safe_date_short(permit_date)
         permit_display = f"{permit_val/1000:.1f}M" if permit_val is not None else "N/A"
         st.markdown(f"""
         <div class="metric-card">
@@ -2036,7 +2090,7 @@ with tab1:
     with col3:
         if vix_val is not None:
             status, color = get_vix_status(vix_val)
-            date_str = f" ({vix_date.strftime('%m/%d/%y')})" if vix_date else ""
+            date_str = safe_date_short(vix_date)
             st.markdown(f"""
             <div class="metric-card" style="border-left-color: {color};">
                 <div class="metric-label">VIX (FEAR GAUGE){date_str}</div>
@@ -2055,7 +2109,7 @@ with tab1:
     with col4:
         if hy_val is not None:
             color = "#ff4d4d" if hy_val > 5 else "#00ff00" if hy_val < 3 else "#FFD700"
-            date_str = f" ({hy_date.strftime('%m/%d/%y')})" if hy_date else ""
+            date_str = safe_date_short(hy_date)
             st.markdown(f"""
             <div class="metric-card" style="border-left-color: {color};">
                 <div class="metric-label">HIGH YIELD SPREAD{date_str}</div>
@@ -2071,7 +2125,7 @@ with tab1:
             """, unsafe_allow_html=True)
     
     with col5:
-        date_str = f" ({oil_date.strftime('%m/%d/%y')})" if oil_date else ""
+        date_str = safe_date_short(oil_date)
         st.markdown(f"""
         <div class="metric-card">
             <div class="metric-label">WTI OIL{date_str}</div>
