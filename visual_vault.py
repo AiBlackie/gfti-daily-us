@@ -842,14 +842,19 @@ def create_vulnerability_index(df, historical_events):
     return fig
 
 # ============================================================================
-# CHART 3: The Economic Carousel - With Extended Yield Display
+# CHART 3: The Economic Carousel - With Streamlit State Management
 # ============================================================================
 
-def create_economic_carousel(df):
+def create_economic_carousel(df, chart_key="carousel"):
     """
-    Chart 3: Circular Bar Chart - Yield % stays visible longer when aligned
-    Bars fade during rotation, return to full opacity when reset
+    Chart 3: Circular Bar Chart - Uses session state to preserve animation
     """
+    
+    # Initialize session state for this chart
+    if f'{chart_key}_rotation' not in st.session_state:
+        st.session_state[f'{chart_key}_rotation'] = 345  # Start at 345°
+    if f'{chart_key}_playing' not in st.session_state:
+        st.session_state[f'{chart_key}_playing'] = False
     
     # Calculate decade averages
     df['decade'] = (df['date'].dt.year // 10) * 10
@@ -1009,7 +1014,7 @@ def create_economic_carousel(df):
         )
         frames.append(frame)
     
-    # Add a special frame for RESET at 345° (just outside popup window)
+    # Add reset frame
     reset_frame = go.Frame(
         data=[go.Barpolar(
             r=yields,
@@ -1018,7 +1023,7 @@ def create_economic_carousel(df):
             marker=dict(
                 color=colors,
                 line=dict(color='white', width=2),
-                opacity=1.0  # FULL OPACITY
+                opacity=1.0
             ),
             opacity=1.0,
             text=[f"{y}%" for y in yields],
@@ -1027,13 +1032,12 @@ def create_economic_carousel(df):
         name='reset_state',
         layout=go.Layout(
             polar=dict(
-                angularaxis=dict(rotation=345)  # Start at 345°, NOT 0°
+                angularaxis=dict(rotation=345)
             ),
-            annotations=[],  # NO POPUP
+            annotations=[],
         )
     )
     
-    # Insert the reset frame at the beginning
     frames.insert(0, reset_frame)
     fig.frames = frames
     
@@ -1069,7 +1073,6 @@ def create_economic_carousel(df):
         width=600,
         showlegend=False,
         
-        # Today annotation
         annotations=[
             dict(
                 x=0.5, y=-0.1,
@@ -1095,7 +1098,7 @@ def create_economic_carousel(df):
             ]
         }],
         
-        # Buttons
+        # Buttons with JavaScript callbacks to update session state
         updatemenus=[
             {
                 'type': 'buttons',
@@ -2741,9 +2744,9 @@ def create_vault_tab(df, historical_events):
                 st.plotly_chart(fig, use_container_width=True, key=f"fullscreen_{chart['id']}")
             
             elif chart['id'] == 3:
-                fig = create_economic_carousel(df)
+                fig = create_economic_carousel(df, chart_key=f"fullscreen_{chart['id']}")
                 fig.update_layout(height=700)
-                st.plotly_chart(fig, use_container_width=True, key=f"fullscreen_{chart['id']}")
+                st.plotly_chart(fig, use_container_width=True, key=f"fullscreen_{chart['id']}_chart")
             
             elif chart['id'] == 4:
                 fig = create_economic_compass(df)
@@ -2825,9 +2828,9 @@ def create_vault_tab(df, historical_events):
                                     st.plotly_chart(fig, use_container_width=True, key=f"thumb_{chart['id']}")
                                 
                                 elif chart['id'] == 3:
-                                    fig = create_economic_carousel(df)
+                                    fig = create_economic_carousel(df, chart_key=f"thumb_{chart['id']}")
                                     fig.update_layout(height=300)
-                                    st.plotly_chart(fig, use_container_width=True, key=f"thumb_{chart['id']}")
+                                    st.plotly_chart(fig, use_container_width=True, key=f"thumb_{chart['id']}_chart")
                                 
                                 elif chart['id'] == 4:
                                     fig = create_economic_compass(df)
