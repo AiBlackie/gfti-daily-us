@@ -708,20 +708,69 @@ def get_indicator_count(df):
                 and not c.endswith('_INV')])
 
 def get_latest_value(df, column, alternative_cols=None):
-    """Get the latest non-NaN value for a column"""
+    """Get the latest non-NaN value for a column - FIXED for monthly/weekly series"""
     if alternative_cols is None:
         alternative_cols = []
     
-    # Try the main column first
+    # First check if there's a _RAW version of this column (for monthly/weekly series)
+    raw_col = f'{column}_RAW'
+    if raw_col in df.columns:
+        valid_data = df[df[raw_col].notna()]
+        if not valid_data.empty:
+            latest_row = valid_data.iloc[-1]
+            latest_date = latest_row['date']
+            
+            # Get the forward-filled value at the same date (or most recent)
+            if column in df.columns:
+                # Try to get the value at the exact date
+                mask = df['date'] == latest_date
+                if mask.any():
+                    fwd_val = df.loc[mask, column].iloc[0]
+                    if not pd.isna(fwd_val):
+                        return fwd_val, latest_date
+                
+                # If no value at exact date, get the most recent non-null
+                valid_fwd = df[df[column].notna()]
+                if not valid_fwd.empty:
+                    return valid_fwd.iloc[-1][column], latest_date
+            
+            # Fallback to the raw value
+            return latest_row[raw_col], latest_date
+    
+    # Then try the main column
     if column in df.columns:
         valid_data = df[df[column].notna()]
         if not valid_data.empty:
             latest_row = valid_data.iloc[-1]
-            return latest_row[column], latest_row['date']
+            latest_val = latest_row[column]
+            latest_date = latest_row['date']
+            
+            # Validate the date is not NaT
+            try:
+                if pd.isna(latest_date):
+                    # If date is NaT, try to find a valid date from _RAW column
+                    raw_col = f'{column}_RAW'
+                    if raw_col in df.columns:
+                        raw_data = df[df[raw_col].notna()]
+                        if not raw_data.empty:
+                            latest_date = raw_data.iloc[-1]['date']
+            except:
+                pass
+            
+            return latest_val, latest_date
     
     # Try alternatives
     for alt in alternative_cols:
         if alt in df.columns:
+            # Check for _RAW version of alternative
+            alt_raw = f'{alt}_RAW'
+            if alt_raw in df.columns:
+                valid_data = df[df[alt_raw].notna()]
+                if not valid_data.empty:
+                    latest_row = valid_data.iloc[-1]
+                    return latest_row[alt_raw], latest_row['date']
+            
+            # Try the main alternative column
             valid_data = df[df[alt].notna()]
             if not valid_data.empty:
                 latest_row = valid_data.iloc[-1]
@@ -1722,12 +1771,12 @@ with tab1:
     unrate_val, unrate_date = get_latest_value(df, 'UNRATE', ['UNRATE'])
     u6_val, u6_date = get_latest_value(df, 'U6RATE', ['U6RATE'])
     jolts_val, jolts_date = get_latest_value(df, 'JTSJOL', ['JTSJOL'])
-    claims_val, claims_date = get_latest_value(df, 'IC4WSA', ['IC4WSA', 'ICSA'])
+    claims_val, claims_date = get_latest_value(df, 'IC4WSA', ['IC4WSA', 'ICSA'])  # Claims
     civpart_val, civpart_date = get_latest_value(df, 'CIVPART', ['CIVPART'])
     cpi_val, cpi_date = get_latest_value(df, 'CPI_YOY', ['CPI_YOY'])
     pce_val, pce_date = get_latest_value(df, 'PCEPILFE', ['PCEPILFE'])
     tie_val, tie_date = get_latest_value(df, 'T10YIE', ['T10YIE'])
-    sent_val, sent_date = get_latest_value(df, 'UMCSENT', ['UMCSENT'])
+    sent_val, sent_date = get_latest_value(df, 'UMCSENT', ['UMCSENT'])  # Consumer Sentiment
     retail_val, retail_date = get_latest_value(df, 'RSAFS', ['RSAFS'])
     hous_val, hous_date = get_latest_value(df, 'HOUST', ['HOUST'])
     permit_val, permit_date = get_latest_value(df, 'PERMIT', ['PERMIT'])
@@ -1737,15 +1786,38 @@ with tab1:
     
     # Helper function to safely format dates for display
     def safe_date_short(date_val):
+        """Safely format a date for display, handling None, NaT, and various date types"""
         if date_val is None:
             return ""
+        
+        # Check for NaT (pandas Not a Time)
         try:
-            if hasattr(date_val, 'strftime') and not pd.isna(date_val):
-                return f" ({date_val.strftime('%m/%d/%y')})"
-            else:
+            if pd.isna(date_val):
                 return ""
         except:
-            return ""
+            pass
+        
+        # If it's a string, try to convert to datetime
+        if isinstance(date_val, str):
+            try:
+                date_val = pd.to_datetime(date_val, format='%d/%m/%Y', dayfirst=True)
+            except:
+                try:
+                    date_val = pd.to_datetime(date_val)
+                except:
+                    return ""
+        
+        # If it's a datetime-like object with strftime method
+        if hasattr(date_val, 'strftime'):
+            try:
+                # Additional check for NaT
+                if pd.isna(date_val):
+                    return ""
+                return f" ({date_val.strftime('%m/%d/%y')})"
+            except:
+                return ""
+        
+        return ""
     
     # Date header
     st.markdown(f"""
@@ -1754,7 +1826,6 @@ with tab1:
         <p style="margin: 5px 0 0; opacity: 0.9;">Most recent available data (as of {df['date'].max().strftime('%B %d, %Y')})</p>
     </div>
     """, unsafe_allow_html=True)
-
     
     # =========================================
     # CHECK FOR CRISIS SIGNALS AND STORE IN SESSION STATE
