@@ -271,55 +271,94 @@ def get_vulnerability_status(value):
         return "HIGH", COLORS['red']
 
 # ============================================================================
-# IMPROVED HISTORICAL MATCHES FUNCTION - REPLACE WITH THIS
+# IMPROVED HISTORICAL MATCHES FUNCTION - SIMPLIFIED TO MATCH WORKING LOGIC
 # ============================================================================
 
-def find_historical_matches(df, current_date):
-    """Find closest historical matches for era comparison with better data quality"""
+def find_historical_matches(df, current_date=None):
+    """Find closest historical matches for era comparison - FIXED for NaT issues"""
     
-    current_yield = df['DGS10'].iloc[-1]
-    current_unrate = df['UNRATE'].iloc[-1]
-    current_cpi = df['CPI_YOY'].iloc[-1]
-    current_spread = df['10Y2Y'].iloc[-1]
+    # If current_date is NaT or None, find the last valid date in the dataframe
+    if current_date is None or pd.isna(current_date):
+        valid_dates = df[df['date'].notna()]['date']
+        if not valid_dates.empty:
+            current_date = valid_dates.iloc[-1]
+        else:
+            # Ultimate fallback - use current date
+            current_date = datetime.now()
     
-    # Create historical dataset (exclude last 30 days)
-    historical = df[df['date'] < current_date - pd.Timedelta(days=30)].copy()
+    print(f"Using current_date: {current_date}")
     
-    if historical.empty:
+    # Get current values - use the most recent non-null values
+    current_yield = df[df['DGS10'].notna()].iloc[-1]['DGS10'] if not df[df['DGS10'].notna()].empty else None
+    
+    if current_yield is None:
+        print("ERROR: No valid DGS10 data found")
         return pd.DataFrame(), pd.DataFrame()
     
-    # Filter to rows that have at least 3 of 4 indicators available
-    historical['data_quality'] = (
-        historical['DGS10'].notna().astype(int) +
-        historical['UNRATE'].notna().astype(int) +
-        historical['CPI_YOY'].notna().astype(int) +
-        historical['10Y2Y'].notna().astype(int)
-    )
+    print(f"current_yield: {current_yield}")
     
-    # Only consider rows with good data quality
-    quality_df = historical[historical['data_quality'] >= 3].copy()
+    # Create historical dataset (exclude last 30 days)
+    mask = (df['date'] < current_date - pd.Timedelta(days=30)) & (df['DGS10'].notna())
+    candidates = df[mask].copy()
     
-    if quality_df.empty:
-        # Fallback to any data if quality filter is too strict
-        quality_df = historical.copy()
+    if len(candidates) == 0:
+        print("⚠️ No candidates found with 30-day exclusion, trying without exclusion...")
+        # Try without the 30-day exclusion
+        mask = df['DGS10'].notna()
+        candidates = df[mask].copy()
+        
+        if len(candidates) == 0:
+            print("❌ Still no candidates found")
+            return pd.DataFrame(), pd.DataFrame()
     
-    # Calculate weighted difference
-    quality_df['score'] = (
-        abs(quality_df['DGS10'].fillna(current_yield) - current_yield) * 0.3 +
-        abs(quality_df['UNRATE'].fillna(current_unrate) - current_unrate) * 0.3 +
-        abs(quality_df['CPI_YOY'].fillna(current_cpi) - current_cpi) * 0.2 +
-        abs(quality_df['10Y2Y'].fillna(current_spread) - current_spread) * 0.2
-    )
+    print(f"✅ Found {len(candidates)} candidates")
+    
+    # Calculate yield difference (primary metric)
+    candidates['yield_diff'] = abs(candidates['DGS10'] - current_yield)
+    
+    # Sort by yield difference
+    candidates = candidates.sort_values('yield_diff')
+    
+    # Create a month-year key to remove duplicates
+    candidates['month_key'] = candidates['date'].dt.strftime('%Y-%m')
+    
+    # Drop duplicates by month_key, keeping the first occurrence (closest to target yield)
+    unique_months = candidates.drop_duplicates(subset=['month_key'], keep='first')
+    
+    # Take top 20 unique months
+    top_matches = unique_months.head(20).copy()
+    
+    # Debug: print top matches
+    print(f"\n=== TOP 10 UNIQUE MONTHS BY YIELD (Current Yield: {current_yield:.2f}%) ===")
+    for i, (idx, row) in enumerate(top_matches.head(10).iterrows()):
+        print(f"  {i+1}. {row['date'].strftime('%Y-%m-%d')} - Yield: {row['DGS10']:.2f}% (diff: {row['yield_diff']:.2f}%)")
+    print("=====================================\n")
     
     # Split into pre-2000 and post-2000
-    pre_2000 = quality_df[quality_df['date'] < '2000-01-01']
-    post_2000 = quality_df[quality_df['date'] >= '2000-01-01']
+    pre_2000 = top_matches[top_matches['date'] < '2000-01-01']
+    post_2000 = top_matches[top_matches['date'] >= '2000-01-01']
     
-    # Get best matches
-    pre_match = pre_2000.nsmallest(1, 'score') if not pre_2000.empty else pd.DataFrame()
-    post_match = post_2000.nsmallest(1, 'score') if not post_2000.empty else pd.DataFrame()
+    # Debug prints
+    print(f"\n=== VISUAL VAULT MATCHES ===")
+    print(f"Total candidates: {len(candidates)}")
+    print(f"Unique months: {len(unique_months)}")
+    print(f"Pre-2000 matches found: {len(pre_2000)}")
+    print(f"Post-2000 matches found: {len(post_2000)}")
+    
+    if not pre_2000.empty:
+        best_pre = pre_2000.iloc[0]
+        print(f"Best pre-2000 match: {best_pre['date'].strftime('%Y-%m-%d')} (yield: {best_pre['DGS10']:.2f}%)")
+    if not post_2000.empty:
+        best_post = post_2000.iloc[0]
+        print(f"Best post-2000 match: {best_post['date'].strftime('%Y-%m-%d')} (yield: {best_post['DGS10']:.2f}%)")
+    print("=============================\n")
+    
+    # Get best matches (closest to current yield)
+    pre_match = pre_2000.head(1) if not pre_2000.empty else pd.DataFrame()
+    post_match = post_2000.head(1) if not post_2000.empty else pd.DataFrame()
     
     return pre_match, post_match
+
 
 # ============================================================================
 # HELPER FUNCTION TO GET LATEST NON-NULL VALUE
@@ -1880,6 +1919,18 @@ def create_era_comparison(df):
     
     pre_2000_match, post_2000_match = find_historical_matches(df, df['date'].iloc[-1])
     
+    # Debug prints to console
+    print("\n=== ERA COMPARISON DEBUG ===")
+    print(f"Pre-2000 match empty: {pre_2000_match.empty}")
+    if not pre_2000_match.empty:
+        print(f"Pre-2000 match date: {pre_2000_match.iloc[0]['date']}")
+        print(f"Pre-2000 match yield: {pre_2000_match.iloc[0]['DGS10']:.2f}%")
+    print(f"Post-2000 match empty: {post_2000_match.empty}")
+    if not post_2000_match.empty:
+        print(f"Post-2000 match date: {post_2000_match.iloc[0]['date']}")
+        print(f"Post-2000 match yield: {post_2000_match.iloc[0]['DGS10']:.2f}%")
+    print("===========================\n")
+    
     # Get today's values
     today_yield, _, today_date = get_latest_value(df, 'DGS10')
     today_unrate, _, _ = get_latest_value(df, 'UNRATE')
@@ -1889,13 +1940,26 @@ def create_era_comparison(df):
     # Create three columns
     col1, col2, col3 = st.columns(3)
     
+    # Add a note about data availability
+    st.markdown("""
+    <div style="background: rgba(255,215,0,0.05); padding: 10px; border-radius: 5px; margin: 10px 0 20px 0; text-align: center; border-left: 3px solid #FFD700;">
+        <p style="color: #ccc; margin: 0; font-size: 0.85rem;">
+            <span style="color: #FFD700;">ℹ️ Note:</span> "N/A" appears for older historical data where certain indicators weren't collected or are unavailable. 
+            Yield comparisons remain accurate for all periods shown.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Column 1: TODAY
     with col1:
         st.markdown(f"""
         <div style="background: linear-gradient(135deg, {COLORS['dark_bg']} 0%, {COLORS['light_bg']} 100%);
                     padding: 20px; border-radius: 10px; border-left: 6px solid {COLORS['era_comparison'][0]};
                     margin-bottom: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
-            <h4 style="color: {COLORS['era_comparison'][0]}; margin-top: 0; font-family: Arial Black;">🔴 TODAY</h4>
-            <p style="color: white; font-size: 1.2rem; margin: 5px 0;"><strong>{safe_strftime(today_date, '%B %Y') if today_date else 'N/A'}</strong></p>
+            <h4 style="color: {COLORS['era_comparison'][0]}; margin-top: 0; font-family: Arial Black; text-align: center;">🔴 TODAY</h4>
+            <p style="color: white; font-size: 1.2rem; margin: 5px 0; text-align: center;">
+                <strong>{safe_strftime(today_date, '%B %Y') if today_date else 'N/A'}</strong>
+            </p>
             <hr style="border-color: {COLORS['gray_dark']};">
             <p style="color: white; margin: 10px 0;"><span style="color: {COLORS['era_comparison'][0]};">10Y Yield:</span> {today_yield}</p>
             <p style="color: white; margin: 5px 0;"><span style="color: {COLORS['era_comparison'][0]};">Unemployment:</span> {today_unrate}</p>
@@ -1904,110 +1968,169 @@ def create_era_comparison(df):
         </div>
         """, unsafe_allow_html=True)
     
+    # Column 2: PRE-2000 MATCH
     with col2:
         if not pre_2000_match.empty:
             match = pre_2000_match.iloc[0]
             match_date = match['date']
             
-            # Get values for the match date
-            match_yield, _, _ = get_latest_value(df[df['date'] <= match_date + pd.Timedelta(days=30)], 'DGS10')
-            match_unrate, _, _ = get_latest_value(df[df['date'] <= match_date + pd.Timedelta(days=30)], 'UNRATE')
-            match_cpi, _, _ = get_latest_value(df[df['date'] <= match_date + pd.Timedelta(days=30)], 'CPI_YOY')
-            match_spread, _, _ = get_latest_value(df[df['date'] <= match_date + pd.Timedelta(days=30)], '10Y2Y')
+            # Get values directly from the match row
+            match_yield = f"{match['DGS10']:.2f}%" if pd.notna(match.get('DGS10')) else "N/A"
+            match_unrate = f"{match['UNRATE']:.1f}%" if pd.notna(match.get('UNRATE')) else "N/A"
+            match_cpi = f"{match['CPI_YOY']:.1f}%" if pd.notna(match.get('CPI_YOY')) else "N/A"
+            match_spread = f"{match['10Y2Y']:.2f}%" if pd.notna(match.get('10Y2Y')) else "N/A"
             
             # Look ahead 12 months
             future_date = match_date + pd.Timedelta(days=365)
-            future_df = df[df['date'] <= future_date + pd.Timedelta(days=30)]
-            future_yield, _, future_date_actual = get_latest_value(future_df, 'DGS10')
             
-            # Calculate change
-            change_text = "N/A"
-            change_color = COLORS['gray']
-            if match_yield != "N/A" and future_yield != "N/A":
-                try:
-                    match_num = float(match_yield.replace('%', ''))
-                    future_num = float(future_yield.replace('%', ''))
-                    change = future_num - match_num
+            # Find yield 12 months later
+            future_mask = (df['date'] >= match_date) & (df['date'] <= future_date)
+            future_data = df[future_mask & df['DGS10'].notna()]
+            
+            if not future_data.empty:
+                # Get the last available yield in the 12-month period
+                future_row = future_data.iloc[-1]
+                future_yield_val = future_row['DGS10']
+                future_yield = f"{future_yield_val:.2f}%"
+                future_actual_date = future_row['date']
+                
+                # Calculate change
+                if pd.notna(match.get('DGS10')):
+                    change = future_yield_val - match['DGS10']
                     change_color = COLORS['green'] if change < 0 else COLORS['red']
                     change_text = f"{change:+.2f}%"
-                except:
-                    pass
+                else:
+                    change_text = "N/A"
+                    change_color = COLORS['gray']
+            else:
+                future_yield = "N/A"
+                future_actual_date = future_date
+                change_text = "N/A"
+                change_color = COLORS['gray']
             
             st.markdown(f"""
             <div style="background: linear-gradient(135deg, {COLORS['dark_bg']} 0%, {COLORS['light_bg']} 100%);
                         padding: 20px; border-radius: 10px; border-left: 6px solid {COLORS['era_comparison'][1]};
                         margin-bottom: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
-                <h4 style="color: {COLORS['era_comparison'][1]}; margin-top: 0; font-family: Arial Black;">📜 PRE-2000 MATCH</h4>
-                <p style="color: white; font-size: 1.2rem; margin: 5px 0;"><strong>{safe_strftime(match_date, '%B %Y')}</strong></p>
+                <h4 style="color: {COLORS['era_comparison'][1]}; margin-top: 0; font-family: Arial Black; text-align: center;">📜 PRE-2000 MATCH</h4>
+                <p style="color: white; font-size: 1.2rem; margin: 5px 0; text-align: center;">
+                    <strong>{safe_strftime(match_date, '%B %Y')}</strong>
+                </p>
                 <hr style="border-color: {COLORS['gray_dark']};">
                 <p style="color: white; margin: 10px 0;"><span style="color: {COLORS['era_comparison'][1]};">10Y Yield:</span> {match_yield}</p>
                 <p style="color: white; margin: 5px 0;"><span style="color: {COLORS['era_comparison'][1]};">Unemployment:</span> {match_unrate}</p>
                 <p style="color: white; margin: 5px 0;"><span style="color: {COLORS['era_comparison'][1]};">Inflation:</span> {match_cpi}</p>
                 <p style="color: white; margin: 5px 0;"><span style="color: {COLORS['era_comparison'][1]};">Spread:</span> {match_spread}</p>
                 <hr style="border-color: {COLORS['gray_dark']};">
-                <p style="color: white; margin: 5px 0;"><strong>12 Months Later:</strong> {safe_strftime(future_date_actual if future_date_actual else future_date, '%b %Y')}</p>
+                <p style="color: white; margin: 5px 0;"><strong>12 Months Later:</strong> {safe_strftime(future_actual_date, '%b %Y')}</p>
                 <p style="color: white; margin: 5px 0;">Yield: {future_yield} 
                     <span style="color: {change_color};">({change_text})</span></p>
             </div>
             """, unsafe_allow_html=True)
+        else:
+            st.markdown(f"""
+            <div style="background: linear-gradient(135deg, {COLORS['dark_bg']} 0%, {COLORS['light_bg']} 100%);
+                        padding: 20px; border-radius: 10px; border-left: 6px solid {COLORS['gray']};
+                        margin-bottom: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
+                <h4 style="color: {COLORS['gray']}; margin-top: 0; font-family: Arial Black; text-align: center;">📜 PRE-2000 MATCH</h4>
+                <p style="color: white; text-align: center; padding: 20px;">
+                    No pre-2000 match found
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
     
+    # Column 3: POST-2000 MATCH
     with col3:
         if not post_2000_match.empty:
             match = post_2000_match.iloc[0]
             match_date = match['date']
             
-            # Get values for the match date
-            match_yield, _, _ = get_latest_value(df[df['date'] <= match_date + pd.Timedelta(days=30)], 'DGS10')
-            match_unrate, _, _ = get_latest_value(df[df['date'] <= match_date + pd.Timedelta(days=30)], 'UNRATE')
-            match_cpi, _, _ = get_latest_value(df[df['date'] <= match_date + pd.Timedelta(days=30)], 'CPI_YOY')
-            match_spread, _, _ = get_latest_value(df[df['date'] <= match_date + pd.Timedelta(days=30)], '10Y2Y')
+            # Get values directly from the match row
+            match_yield = f"{match['DGS10']:.2f}%" if pd.notna(match.get('DGS10')) else "N/A"
+            match_unrate = f"{match['UNRATE']:.1f}%" if pd.notna(match.get('UNRATE')) else "N/A"
+            match_cpi = f"{match['CPI_YOY']:.1f}%" if pd.notna(match.get('CPI_YOY')) else "N/A"
+            match_spread = f"{match['10Y2Y']:.2f}%" if pd.notna(match.get('10Y2Y')) else "N/A"
             
             # Look ahead 12 months
             future_date = match_date + pd.Timedelta(days=365)
-            future_df = df[df['date'] <= future_date + pd.Timedelta(days=30)]
-            future_yield, _, future_date_actual = get_latest_value(future_df, 'DGS10')
             
-            # Calculate change
-            change_text = "N/A"
-            change_color = COLORS['gray']
-            if match_yield != "N/A" and future_yield != "N/A":
-                try:
-                    match_num = float(match_yield.replace('%', ''))
-                    future_num = float(future_yield.replace('%', ''))
-                    change = future_num - match_num
+            # Find yield 12 months later
+            future_mask = (df['date'] >= match_date) & (df['date'] <= future_date)
+            future_data = df[future_mask & df['DGS10'].notna()]
+            
+            if not future_data.empty:
+                # Get the last available yield in the 12-month period
+                future_row = future_data.iloc[-1]
+                future_yield_val = future_row['DGS10']
+                future_yield = f"{future_yield_val:.2f}%"
+                future_actual_date = future_row['date']
+                
+                # Calculate change
+                if pd.notna(match.get('DGS10')):
+                    change = future_yield_val - match['DGS10']
                     change_color = COLORS['green'] if change < 0 else COLORS['red']
                     change_text = f"{change:+.2f}%"
-                except:
-                    pass
+                else:
+                    change_text = "N/A"
+                    change_color = COLORS['gray']
+            else:
+                future_yield = "N/A"
+                future_actual_date = future_date
+                change_text = "N/A"
+                change_color = COLORS['gray']
             
             st.markdown(f"""
             <div style="background: linear-gradient(135deg, {COLORS['dark_bg']} 0%, {COLORS['light_bg']} 100%);
                         padding: 20px; border-radius: 10px; border-left: 6px solid {COLORS['era_comparison'][2]};
                         margin-bottom: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
-                <h4 style="color: {COLORS['era_comparison'][2]}; margin-top: 0; font-family: Arial Black;">📜 POST-2000 MATCH</h4>
-                <p style="color: white; font-size: 1.2rem; margin: 5px 0;"><strong>{safe_strftime(match_date, '%B %Y')}</strong></p>
+                <h4 style="color: {COLORS['era_comparison'][2]}; margin-top: 0; font-family: Arial Black; text-align: center;">📜 POST-2000 MATCH</h4>
+                <p style="color: white; font-size: 1.2rem; margin: 5px 0; text-align: center;">
+                    <strong>{safe_strftime(match_date, '%B %Y')}</strong>
+                </p>
                 <hr style="border-color: {COLORS['gray_dark']};">
                 <p style="color: white; margin: 10px 0;"><span style="color: {COLORS['era_comparison'][2]};">10Y Yield:</span> {match_yield}</p>
                 <p style="color: white; margin: 5px 0;"><span style="color: {COLORS['era_comparison'][2]};">Unemployment:</span> {match_unrate}</p>
                 <p style="color: white; margin: 5px 0;"><span style="color: {COLORS['era_comparison'][2]};">Inflation:</span> {match_cpi}</p>
                 <p style="color: white; margin: 5px 0;"><span style="color: {COLORS['era_comparison'][2]};">Spread:</span> {match_spread}</p>
                 <hr style="border-color: {COLORS['gray_dark']};">
-                <p style="color: white; margin: 5px 0;"><strong>12 Months Later:</strong> {safe_strftime(future_date_actual if future_date_actual else future_date, '%b %Y')}</p>
+                <p style="color: white; margin: 5px 0;"><strong>12 Months Later:</strong> {safe_strftime(future_actual_date, '%b %Y')}</p>
                 <p style="color: white; margin: 5px 0;">Yield: {future_yield} 
                     <span style="color: {change_color};">({change_text})</span></p>
             </div>
             """, unsafe_allow_html=True)
+        else:
+            st.markdown(f"""
+            <div style="background: linear-gradient(135deg, {COLORS['dark_bg']} 0%, {COLORS['light_bg']} 100%);
+                        padding: 20px; border-radius: 10px; border-left: 6px solid {COLORS['gray']};
+                        margin-bottom: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
+                <h4 style="color: {COLORS['gray']}; margin-top: 0; font-family: Arial Black; text-align: center;">📜 POST-2000 MATCH</h4>
+                <p style="color: white; text-align: center; padding: 20px;">
+                    No post-2000 match found
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
     
     return None
-
 # ============================================================================
 # CHART 9: ERA COMPARISON - FIGURE VERSION FOR FULL SCREEN (FIXED)
 # ============================================================================
 
 def create_era_comparison_figure(df):
-    """Create a figure version of Era Comparison for full screen display"""
+    """Create a figure version of Era Comparison for full screen display - FIXED with improved matching"""
     
     pre_2000_match, post_2000_match = find_historical_matches(df, df['date'].iloc[-1])
+    
+    # Debug prints to console
+    print("\n=== ERA COMPARISON FULLSCREEN DEBUG ===")
+    print(f"Pre-2000 match empty: {pre_2000_match.empty}")
+    if not pre_2000_match.empty:
+        print(f"Pre-2000 match date: {pre_2000_match.iloc[0]['date']}")
+        print(f"Pre-2000 match yield: {pre_2000_match.iloc[0]['DGS10']:.2f}%")
+    print(f"Post-2000 match empty: {post_2000_match.empty}")
+    if not post_2000_match.empty:
+        print(f"Post-2000 match date: {post_2000_match.iloc[0]['date']}")
+        print(f"Post-2000 match yield: {post_2000_match.iloc[0]['DGS10']:.2f}%")
+    print("======================================\n")
     
     # Get today's values
     today_yield, _, today_date = get_latest_value(df, 'DGS10')
@@ -2022,30 +2145,31 @@ def create_era_comparison_figure(df):
         horizontal_spacing=0.1
     )
     
-    # Helper function to get value near a date
-    def get_value_near_date_fig(col, target_date):
-        mask = (df['date'] >= target_date - pd.Timedelta(days=60)) & (df['date'] <= target_date + pd.Timedelta(days=60))
-        valid = df[mask & df[col].notna()]
-        if not valid.empty:
-            closest_idx = (valid['date'] - target_date).abs().argsort()[:1]
-            val = valid.iloc[closest_idx][col].iloc[0]
-            if col == 'DGS10':
-                return f"{val:.2f}%", val
-            elif col == 'UNRATE':
-                return f"{val:.1f}%", val
-            elif col == 'CPI_YOY':
-                return f"{val:.1f}%", val
-            elif col == '10Y2Y':
-                return f"{val:.2f}%", val
-        return "N/A", None
+    # Hide axes
+    fig.update_xaxes(visible=False)
+    fig.update_yaxes(visible=False)
     
-    # Today's data
+    # Add a note about data availability as an annotation at the bottom
+    fig.add_annotation(
+        xref="paper", yref="paper",
+        x=0.5, y=-0.08,
+        text="<span style='color:#FFD700;'>ℹ️ Note:</span> 'N/A' appears for older historical data where certain indicators weren't collected. Yield comparisons remain accurate.",
+        showarrow=False,
+        font=dict(size=11, color='#ccc', family='Arial'),
+        align="center",
+        bgcolor='rgba(0,0,0,0.7)',
+        bordercolor='#FFD700',
+        borderwidth=1,
+        borderpad=8
+    )
+    
+    # TODAY panel (column 1)
     today_text = (
         f"<b>{safe_strftime(today_date, '%B %Y') if today_date else 'N/A'}</b><br><br>"
-        f"10Y Yield: {today_yield}<br>"
-        f"Unemployment: {today_unrate}<br>"
-        f"Inflation: {today_cpi}<br>"
-        f"Spread: {today_spread}"
+        f"<span style='color:{COLORS['era_comparison'][0]};'>10Y Yield:</span> {today_yield}<br>"
+        f"<span style='color:{COLORS['era_comparison'][0]};'>Unemployment:</span> {today_unrate}<br>"
+        f"<span style='color:{COLORS['era_comparison'][0]};'>Inflation:</span> {today_cpi}<br>"
+        f"<span style='color:{COLORS['era_comparison'][0]};'>Spread:</span> {today_spread}"
     )
     
     fig.add_annotation(
@@ -2053,109 +2177,141 @@ def create_era_comparison_figure(df):
         x=0.17, y=0.5,
         text=today_text,
         showarrow=False,
-        font=dict(size=14, color=COLORS['era_comparison'][0]),
+        font=dict(size=14, color='white', family='Arial'),
         align="center",
         bordercolor=COLORS['era_comparison'][0],
         borderwidth=2,
-        borderpad=10,
+        borderpad=15,
         bgcolor=COLORS['dark_bg']
     )
     
-    # Pre-2000 match
+    # PRE-2000 MATCH panel (column 2)
     if not pre_2000_match.empty:
         match = pre_2000_match.iloc[0]
         match_date = match['date']
         
-        match_yield, match_yield_num = get_value_near_date_fig('DGS10', match_date)
-        match_unrate, _ = get_value_near_date_fig('UNRATE', match_date)
-        match_cpi, _ = get_value_near_date_fig('CPI_YOY', match_date)
-        match_spread, _ = get_value_near_date_fig('10Y2Y', match_date)
+        # Get values directly from the match row
+        match_yield = f"{match['DGS10']:.2f}%" if pd.notna(match.get('DGS10')) else "N/A"
+        match_unrate = f"{match['UNRATE']:.1f}%" if pd.notna(match.get('UNRATE')) else "N/A"
+        match_cpi = f"{match['CPI_YOY']:.1f}%" if pd.notna(match.get('CPI_YOY')) else "N/A"
+        match_spread = f"{match['10Y2Y']:.2f}%" if pd.notna(match.get('10Y2Y')) else "N/A"
         
         # Look ahead 12 months
         future_date = match_date + pd.Timedelta(days=365)
-        future_yield, future_yield_num = get_value_near_date_fig('DGS10', future_date)
         
-        # Calculate change
-        change_text = ""
-        change_color = COLORS['gray']
-        if match_yield_num is not None and future_yield_num is not None:
-            change = future_yield_num - match_yield_num
-            change_color = COLORS['green'] if change < 0 else COLORS['red']
-            change_text = f"{change:+.2f}%"
+        # Find yield 12 months later
+        future_mask = (df['date'] >= match_date) & (df['date'] <= future_date)
+        future_data = df[future_mask & df['DGS10'].notna()]
+        
+        if not future_data.empty:
+            # Get the last available yield in the 12-month period
+            future_row = future_data.iloc[-1]
+            future_yield_val = future_row['DGS10']
+            future_yield = f"{future_yield_val:.2f}%"
+            future_actual_date = future_row['date']
+            
+            # Calculate change
+            if pd.notna(match.get('DGS10')):
+                change = future_yield_val - match['DGS10']
+                change_color = COLORS['green'] if change < 0 else COLORS['red']
+                change_text = f"{change:+.2f}%"
+            else:
+                change_text = "N/A"
+                change_color = COLORS['gray']
         else:
+            future_yield = "N/A"
+            future_actual_date = future_date
             change_text = "N/A"
+            change_color = COLORS['gray']
         
         pre_text = (
             f"<b>{safe_strftime(match_date, '%B %Y')}</b><br><br>"
-            f"10Y Yield: {match_yield}<br>"
-            f"Unemployment: {match_unrate}<br>"
-            f"Inflation: {match_cpi}<br>"
-            f"Spread: {match_spread}<br><br>"
-            f"<b>12 Months Later:</b><br>"
-            f"{safe_strftime(future_date, '%b %Y')}: {future_yield}<br>"
-            f"Change: <span style='color:{change_color};'>{change_text}</span>"
+            f"<span style='color:{COLORS['era_comparison'][1]};'>10Y Yield:</span> {match_yield}<br>"
+            f"<span style='color:{COLORS['era_comparison'][1]};'>Unemployment:</span> {match_unrate}<br>"
+            f"<span style='color:{COLORS['era_comparison'][1]};'>Inflation:</span> {match_cpi}<br>"
+            f"<span style='color:{COLORS['era_comparison'][1]};'>Spread:</span> {match_spread}<br><br>"
+            f"<b>12 Months Later:</b> {safe_strftime(future_actual_date, '%b %Y')}<br>"
+            f"Yield: {future_yield} <span style='color:{change_color};'>({change_text})</span>"
         )
-        
-        fig.add_annotation(
-            xref="paper", yref="paper",
-            x=0.5, y=0.5,
-            text=pre_text,
-            showarrow=False,
-            font=dict(size=14, color=COLORS['era_comparison'][1]),
-            align="center",
-            bordercolor=COLORS['era_comparison'][1],
-            borderwidth=2,
-            borderpad=10,
-            bgcolor=COLORS['dark_bg']
-        )
+    else:
+        pre_text = "<b>No pre-2000 match found</b>"
     
-    # Post-2000 match
+    fig.add_annotation(
+        xref="paper", yref="paper",
+        x=0.5, y=0.5,
+        text=pre_text,
+        showarrow=False,
+        font=dict(size=14, color='white', family='Arial'),
+        align="center",
+        bordercolor=COLORS['era_comparison'][1] if not pre_2000_match.empty else COLORS['gray'],
+        borderwidth=2,
+        borderpad=15,
+        bgcolor=COLORS['dark_bg']
+    )
+    
+    # POST-2000 MATCH panel (column 3)
     if not post_2000_match.empty:
         match = post_2000_match.iloc[0]
         match_date = match['date']
         
-        match_yield, match_yield_num = get_value_near_date_fig('DGS10', match_date)
-        match_unrate, _ = get_value_near_date_fig('UNRATE', match_date)
-        match_cpi, _ = get_value_near_date_fig('CPI_YOY', match_date)
-        match_spread, _ = get_value_near_date_fig('10Y2Y', match_date)
+        # Get values directly from the match row
+        match_yield = f"{match['DGS10']:.2f}%" if pd.notna(match.get('DGS10')) else "N/A"
+        match_unrate = f"{match['UNRATE']:.1f}%" if pd.notna(match.get('UNRATE')) else "N/A"
+        match_cpi = f"{match['CPI_YOY']:.1f}%" if pd.notna(match.get('CPI_YOY')) else "N/A"
+        match_spread = f"{match['10Y2Y']:.2f}%" if pd.notna(match.get('10Y2Y')) else "N/A"
         
         # Look ahead 12 months
         future_date = match_date + pd.Timedelta(days=365)
-        future_yield, future_yield_num = get_value_near_date_fig('DGS10', future_date)
         
-        # Calculate change
-        change_text = ""
-        change_color = COLORS['gray']
-        if match_yield_num is not None and future_yield_num is not None:
-            change = future_yield_num - match_yield_num
-            change_color = COLORS['green'] if change < 0 else COLORS['red']
-            change_text = f"{change:+.2f}%"
+        # Find yield 12 months later
+        future_mask = (df['date'] >= match_date) & (df['date'] <= future_date)
+        future_data = df[future_mask & df['DGS10'].notna()]
+        
+        if not future_data.empty:
+            # Get the last available yield in the 12-month period
+            future_row = future_data.iloc[-1]
+            future_yield_val = future_row['DGS10']
+            future_yield = f"{future_yield_val:.2f}%"
+            future_actual_date = future_row['date']
+            
+            # Calculate change
+            if pd.notna(match.get('DGS10')):
+                change = future_yield_val - match['DGS10']
+                change_color = COLORS['green'] if change < 0 else COLORS['red']
+                change_text = f"{change:+.2f}%"
+            else:
+                change_text = "N/A"
+                change_color = COLORS['gray']
         else:
+            future_yield = "N/A"
+            future_actual_date = future_date
             change_text = "N/A"
+            change_color = COLORS['gray']
         
         post_text = (
             f"<b>{safe_strftime(match_date, '%B %Y')}</b><br><br>"
-            f"10Y Yield: {match_yield}<br>"
-            f"Unemployment: {match_unrate}<br>"
-            f"Inflation: {match_cpi}<br>"
-            f"Spread: {match_spread}<br><br>"
-            f"<b>12 Months Later:</b><br>"
-            f"{safe_strftime(future_date, '%b %Y')}: {future_yield}<br>"
-            f"Change: <span style='color:{change_color};'>{change_text}</span>"
+            f"<span style='color:{COLORS['era_comparison'][2]};'>10Y Yield:</span> {match_yield}<br>"
+            f"<span style='color:{COLORS['era_comparison'][2]};'>Unemployment:</span> {match_unrate}<br>"
+            f"<span style='color:{COLORS['era_comparison'][2]};'>Inflation:</span> {match_cpi}<br>"
+            f"<span style='color:{COLORS['era_comparison'][2]};'>Spread:</span> {match_spread}<br><br>"
+            f"<b>12 Months Later:</b> {safe_strftime(future_actual_date, '%b %Y')}<br>"
+            f"Yield: {future_yield} <span style='color:{change_color};'>({change_text})</span>"
         )
-        
-        fig.add_annotation(
-            xref="paper", yref="paper",
-            x=0.83, y=0.5,
-            text=post_text,
-            showarrow=False,
-            font=dict(size=14, color=COLORS['era_comparison'][2]),
-            align="center",
-            bordercolor=COLORS['era_comparison'][2],
-            borderwidth=2,
-            borderpad=10,
-            bgcolor=COLORS['dark_bg']
-        )
+    else:
+        post_text = "<b>No post-2000 match found</b>"
+    
+    fig.add_annotation(
+        xref="paper", yref="paper",
+        x=0.83, y=0.5,
+        text=post_text,
+        showarrow=False,
+        font=dict(size=14, color='white', family='Arial'),
+        align="center",
+        bordercolor=COLORS['era_comparison'][2] if not post_2000_match.empty else COLORS['gray'],
+        borderwidth=2,
+        borderpad=15,
+        bgcolor=COLORS['dark_bg']
+    )
     
     # Update layout
     fig.update_layout(
@@ -2169,12 +2325,8 @@ def create_era_comparison_figure(df):
         plot_bgcolor='rgba(0,0,0,0)',
         paper_bgcolor='rgba(0,0,0,0)',
         showlegend=False,
-        margin=dict(l=50, r=50, t=100, b=50)
+        margin=dict(l=50, r=50, t=100, b=100)  # Increased bottom margin for the note
     )
-    
-    # Hide axes
-    fig.update_xaxes(visible=False)
-    fig.update_yaxes(visible=False)
     
     return fig
 

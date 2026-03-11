@@ -824,7 +824,7 @@ def format_value(value, decimals=2, prefix="", suffix=""):
     return f"{prefix}{value}{suffix}"
 
 def find_historical_matches(df, current_yield, current_date, n=5, era="All History"):
-    """Find the closest historical matches for today's yield"""
+    """Find the closest historical matches for today's yield - FIXED to remove duplicates"""
     mask = (df['date'] < current_date - pd.Timedelta(days=30)) & (df['DGS10'].notna())
     
     # Apply era filter
@@ -838,11 +838,24 @@ def find_historical_matches(df, current_yield, current_date, n=5, era="All Histo
     if len(candidates) == 0:
         return pd.DataFrame()
     
+    # Calculate yield difference
     candidates['yield_diff'] = abs(candidates['DGS10'] - current_yield)
-    candidates['similarity'] = 100 - (candidates['yield_diff'] * 50)
-    candidates['similarity'] = candidates['similarity'].clip(0, 100)
     
-    matches = candidates.nsmallest(n, 'yield_diff').copy()
+    # Sort by yield difference
+    candidates = candidates.sort_values('yield_diff')
+    
+    # Create a month-year key to remove duplicates
+    candidates['month_key'] = candidates['date'].dt.strftime('%Y-%m')
+    
+    # Drop duplicates by month_key, keeping the first occurrence (closest to target yield)
+    unique_months = candidates.drop_duplicates(subset=['month_key'], keep='first')
+    
+    # Take top n unique months
+    matches = unique_months.head(n).copy()
+    
+    # Calculate similarity score
+    matches['similarity'] = 100 - (matches['yield_diff'] * 50)
+    matches['similarity'] = matches['similarity'].clip(0, 100)
     
     results = []
     for idx, row in matches.iterrows():
