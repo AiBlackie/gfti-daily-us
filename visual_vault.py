@@ -857,12 +857,12 @@ def create_vulnerability_index(df, historical_events):
     return fig
 
 # ============================================================================
-# CHART 3: The Economic Carousel - With Streamlit State Management
+# CHART 3: The Economic Carousel - OPTIMIZED FOR CLOUD DEPLOYMENT
 # ============================================================================
 
 def create_economic_carousel(df, chart_key="carousel", force_recreate=False):
     """
-    Chart 3: Circular Bar Chart - With state management for animations
+    Chart 3: Circular Bar Chart - Optimized version with fewer frames for cloud deployment
     """
     
     # Initialize session state for this specific chart instance
@@ -905,10 +905,10 @@ def create_economic_carousel(df, chart_key="carousel", force_recreate=False):
         today_str = today_date.strftime('%b %d, %Y')
         today_display = f"{today_yield:.2f}%"
     
-    # Create circular bar chart
+    # Create circular bar chart - SIMPLIFIED VERSION
     fig = go.Figure()
     
-    # Add the original trace
+    # Add the main trace
     fig.add_trace(go.Barpolar(
         r=yields,
         theta=decades,
@@ -924,13 +924,9 @@ def create_economic_carousel(df, chart_key="carousel", force_recreate=False):
         hovertemplate='<b>%{theta}</b><br>Avg Yield: %{r:.2f}%<extra></extra>'
     ))
     
-    # Adaptive text colors
-    title_color = '#D4AF37'
-    axis_color = '#D4AF37'
-    
-    # Create frames for rotation
+    # Create a SIMPLIFIED animation with fewer frames (every 15 degrees instead of 3)
     frames = []
-    for rotation in range(0, 360, 3):
+    for rotation in range(0, 360, 15):  # Reduced from 3 to 15 degrees
         
         # Calculate which decade line is aligned
         base_angles = [i * (360 / len(decades)) for i in range(len(decades))]
@@ -949,50 +945,24 @@ def create_economic_carousel(df, chart_key="carousel", force_recreate=False):
                 break
         
         # Create frame with yield display
-        frame_layout = go.Layout(
-            polar=dict(
-                angularaxis=dict(rotation=rotation)
-            ),
-            annotations=[
-                dict(
-                    x=0.5, y=0.5,
-                    xref="paper", yref="paper",
-                    text=aligned_text,
-                    showarrow=False,
-                    font=dict(size=28, color='white', family='Arial Black'),
-                    bgcolor='rgba(0,0,0,0.9)',
-                    bordercolor='#D4AF37',
-                    borderwidth=4,
-                    borderpad=12,
-                    visible=True if aligned_text else False
-                ),
-                dict(
-                    x=0.5, y=-0.1,
-                    xref="paper", yref="paper",
-                    text=f"📍 Today: {today_display} ({today_str})",
-                    showarrow=False,
-                    font=dict(size=12, color=axis_color),
-                    align="center"
-                )
-            ]
-        )
-        
-        # If aligned, highlight the bar
         if aligned_decade:
+            # Highlight the aligned bar
             frame_data = [
+                # Background bars (dimmed)
                 go.Barpolar(
                     r=yields,
                     theta=decades,
                     width=[30] * len(decades),
                     marker=dict(
                         color=colors,
-                        line=dict(color='white', width=2),
-                        opacity=0.4
+                        line=dict(color='white', width=1),
+                        opacity=0.3
                     ),
-                    opacity=0.4,
+                    opacity=0.3,
                     text=[f"{y}%" for y in yields],
                     hoverinfo='text+theta+r'
                 ),
+                # Highlighted bar
                 go.Barpolar(
                     r=[aligned_yield],
                     theta=[aligned_decade],
@@ -1008,15 +978,17 @@ def create_economic_carousel(df, chart_key="carousel", force_recreate=False):
                 )
             ]
         else:
+            # Just dim all bars
             frame_data = [go.Barpolar(
                 r=yields,
                 theta=decades,
                 width=[30] * len(decades),
                 marker=dict(
                     color=colors,
-                    line=dict(color='white', width=2)
+                    line=dict(color='white', width=1),
+                    opacity=0.3
                 ),
-                opacity=0.4,
+                opacity=0.3,
                 text=[f"{y}%" for y in yields],
                 hoverinfo='text+theta+r'
             )]
@@ -1024,42 +996,35 @@ def create_economic_carousel(df, chart_key="carousel", force_recreate=False):
         frame = go.Frame(
             data=frame_data,
             name=f'rotate_{rotation}',
-            layout=frame_layout
+            layout=go.Layout(
+                polar=dict(
+                    angularaxis=dict(rotation=rotation)
+                ),
+                annotations=[
+                    dict(
+                        x=0.5, y=0.5,
+                        xref="paper", yref="paper",
+                        text=aligned_text,
+                        showarrow=False,
+                        font=dict(size=24, color='white', family='Arial Black'),
+                        bgcolor='rgba(0,0,0,0.9)',
+                        bordercolor='#D4AF37',
+                        borderwidth=3,
+                        borderpad=8,
+                        visible=True if aligned_text else False
+                    )
+                ]
+            )
         )
         frames.append(frame)
     
-    # Add reset frame
-    reset_frame = go.Frame(
-        data=[go.Barpolar(
-            r=yields,
-            theta=decades,
-            width=[30] * len(decades),
-            marker=dict(
-                color=colors,
-                line=dict(color='white', width=2),
-                opacity=1.0
-            ),
-            opacity=1.0,
-            text=[f"{y}%" for y in yields],
-            hoverinfo='text+theta+r'
-        )],
-        name='reset_state',
-        layout=go.Layout(
-            polar=dict(
-                angularaxis=dict(rotation=345)
-            ),
-            annotations=[],
-        )
-    )
-    
-    frames.insert(0, reset_frame)
     fig.frames = frames
     
     # Base layout
     fig.update_layout(
         title=dict(
             text="🎪 The Economic Carousel: 10Y Yield by Decade",
-            font=dict(color=title_color, size=20, family='Arial Black'),
+            font=dict(color='#D4AF37', size=20, family='Arial Black'),
             x=0.5
         ),
         polar=dict(
@@ -1069,13 +1034,13 @@ def create_economic_carousel(df, chart_key="carousel", force_recreate=False):
                 tickfont=dict(color='#9E9E9E', size=10),
                 gridcolor='rgba(158,158,158,0.2)',
                 gridwidth=1,
-                title=dict(text="Yield (%)", font=dict(color=axis_color))
+                title=dict(text="Yield (%)", font=dict(color='#D4AF37'))
             ),
             angularaxis=dict(
-                tickfont=dict(color=axis_color, size=12, family='Arial Black'),
+                tickfont=dict(color='#D4AF37', size=12, family='Arial Black'),
                 gridcolor='#D4AF37',
-                gridwidth=3,
-                linewidth=3,
+                gridwidth=2,
+                linewidth=2,
                 showline=True,
                 direction='clockwise'
             ),
@@ -1083,8 +1048,7 @@ def create_economic_carousel(df, chart_key="carousel", force_recreate=False):
         ),
         paper_bgcolor='rgba(0,0,0,0)',
         font=dict(color='#9E9E9E'),
-        height=600,
-        width=600,
+        height=500,  # Reduced height
         showlegend=False,
         
         annotations=[
@@ -1093,48 +1057,27 @@ def create_economic_carousel(df, chart_key="carousel", force_recreate=False):
                 xref="paper", yref="paper",
                 text=f"📍 Today: {today_display} ({today_str})",
                 showarrow=False,
-                font=dict(size=12, color=axis_color),
+                font=dict(size=10, color='#D4AF37'),
                 align="center"
             )
         ],
         
-        # Slider for manual rotation
-        sliders=[{
-            'active': 0,
-            'currentvalue': {'prefix': 'Rotation: '},
-            'pad': {'t': 50},
-            'steps': [
-                {'args': [[f'rotate_{r}'], {'frame': {'duration': 0, 'redraw': True},
-                                           'mode': 'immediate'}],
-                 'label': f'{r}°',
-                 'method': 'animate'}
-                for r in range(0, 360, 15)
-            ]
-        }],
-        
-        # Buttons
+        # SIMPLIFIED controls
         updatemenus=[
             {
                 'type': 'buttons',
                 'buttons': [
-                    {'args': [None, {'frame': {'duration': 150, 'redraw': True},
+                    {'args': [None, {'frame': {'duration': 300, 'redraw': True},
                                     'fromcurrent': True, 'mode': 'immediate'}],
                      'label': '▶️ Play',
-                     'method': 'animate'}
-                ],
-                'direction': 'left',
-                'pad': {'r': 10, 't': 10},
-                'showactive': False,
-                'x': 0.0,
-                'y': 0,
-                'xanchor': 'left'
-            },
-            {
-                'type': 'buttons',
-                'buttons': [
+                     'method': 'animate'},
                     {'args': [[None], {'frame': {'duration': 0, 'redraw': False},
                                       'mode': 'immediate'}],
                      'label': '⏸️ Pause',
+                     'method': 'animate'},
+                    {'args': [[None], {'frame': {'duration': 0, 'redraw': True},
+                                      'mode': 'immediate', 'fromcurrent': False}],
+                     'label': '🔄 Reset',
                      'method': 'animate'}
                 ],
                 'direction': 'left',
@@ -1143,27 +1086,10 @@ def create_economic_carousel(df, chart_key="carousel", force_recreate=False):
                 'x': 0.1,
                 'y': 0,
                 'xanchor': 'left'
-            },
-            {
-                'type': 'buttons',
-                'buttons': [
-                    {'args': [['reset_state'],
-                             {'frame': {'duration': 0, 'redraw': True},
-                              'mode': 'immediate',
-                              'fromcurrent': False}],
-                     'label': '🔄 Reset',
-                     'method': 'animate'}
-                ],
-                'direction': 'left',
-                'pad': {'r': 10, 't': 10},
-                'showactive': False,
-                'x': 0.2,
-                'y': 0,
-                'xanchor': 'left'
             }
         ],
         
-        margin=dict(l=40, r=40, t=80, b=40)
+        margin=dict(l=40, r=40, t=80, b=80)
     )
     
     return fig
@@ -2764,15 +2690,16 @@ def create_vault_tab(df, historical_events, view_mode='thumbnail', fullscreen_id
                 fig = create_vulnerability_index(df, historical_events)
                 fig.update_layout(height=700)
                 st.plotly_chart(fig, use_container_width=True, key=f"fullscreen_{chart['id']}")
-            
-            elif chart['id'] == 3:
-                # Create a fresh chart for fullscreen with unique key
-                fig = create_economic_carousel(df, chart_key=f"fullscreen_{chart['id']}", force_recreate=True)
-                fig.update_layout(height=700)
-                # Use a unique key with counter to force fresh instance
-                unique_key = f"fullscreen_{chart['id']}_{st.session_state.get('vault_key_counter', 0)}"
-                st.plotly_chart(fig, use_container_width=True, key=unique_key)            
 
+            elif chart['id'] == 3:
+               # Create a fresh chart for fullscreen with unique key
+               fig = create_economic_carousel(df, chart_key=f"fullscreen_{chart['id']}", force_recreate=True)
+               fig.update_layout(height=700)
+               # Use a unique key with counter to force fresh instance
+               unique_key = f"fullscreen_{chart['id']}_{st.session_state.get('vault_key_counter', 0)}"
+               st.plotly_chart(fig, use_container_width=True, key=unique_key)
+
+            
             elif chart['id'] == 4:
                 fig = create_economic_compass(df)
                 fig.update_layout(height=700)
