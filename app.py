@@ -1797,7 +1797,7 @@ with tab1:
     hy_val, hy_date = get_latest_value(df, 'HY_SPREAD', ['HY_SPREAD', 'BAMLH0A0HYM2'])
     oil_val, oil_date = get_latest_value(df, 'DCOILWTICO', ['DCOILWTICO'])
     
-    # Helper function to safely format dates for display
+        # Helper function to safely format dates for display
     def safe_date_short(date_val):
         """Safely format a date for display, handling None, NaT, and various date types"""
         if date_val is None:
@@ -2217,28 +2217,84 @@ with tab1:
         </div>
         """, unsafe_allow_html=True)
     
-    # =========================================
-    # THE FULL STORY SUMMARY
+        # =========================================
+    # THE FULL STORY SUMMARY - UPDATED WITH ALL CRISIS INDICATORS
     # =========================================
     
     st.markdown('<div class="sub-header">📝 The Complete Story</div>', unsafe_allow_html=True)
     
+    # Add a summary of critical alerts at the top
+    critical_count = len([a for a in alerts if '🔴' in a['level']])
+    warning_count = len([a for a in alerts if '🟡' in a['level']])
+    
+    if critical_count > 0 or warning_count > 0:
+        # Determine the border color based on highest severity
+        border_color = "#ff4d4d" if critical_count > 0 else "#FFD700"
+        
+        st.markdown(f"""
+        <div style="background: #1a1a1a; padding: 10px; border-radius: 5px; border-left: 4px solid {border_color}; margin-bottom: 15px;">
+            <span style="color: #ff4d4d; font-weight: bold;">🔴 {critical_count} Critical</span>
+            <span style="color: #FFD700; font-weight: bold; margin-left: 15px;">🟡 {warning_count} Warning{'s' if warning_count != 1 else ''}</span>
+        </div>
+        """, unsafe_allow_html=True)    
     col1, col2 = st.columns(2)
     
     with col1:
         st.markdown("##### 🔴 Risks")
         risks = []
         
-        if spread_val is not None and spread_val < 0:
-            risks.append("• **Inverted yield curve** - Historically predicts recession")
+        # Yield Curve Risk
+        if spread_val is not None:
+            if spread_val < 0:
+                risks.append(f"• **🔴 Inverted yield curve ({spread_val:.2f}%)** - Historically predicts recession")
+            elif spread_val < 0.2:
+                risks.append(f"• **🟡 Flattening yield curve ({spread_val:.2f}%)** - Watching for inversion")
+        
+        # Oil Price Risk
+        if oil_val is not None:
+            if oil_val > 90:
+                risks.append(f"• **🔴 CRITICAL: Oil at ${oil_val:.2f}** - Inflation shock, energy crisis")
+            elif oil_val > 80:
+                risks.append(f"• **🟡 Elevated oil at ${oil_val:.2f}** - Rising energy costs")
+        
+        # VIX / Market Fear Risk
+        if vix_val is not None:
+            if vix_val > 30:
+                risks.append(f"• **🔴 Market PANIC: VIX at {vix_val:.1f}** - Extreme fear")
+            elif vix_val > 25:
+                risks.append(f"• **🟡 Elevated fear: VIX at {vix_val:.1f}** - Market stress")
+        
+        # Credit Spread Risk
+        if hy_val is not None:
+            if hy_val > 5:
+                risks.append(f"• **🔴 Credit crunch: HY spreads at {hy_val:.2f}%** - Corporate stress")
+            elif hy_val > 4:
+                risks.append(f"• **🟡 Corporate stress: HY spreads at {hy_val:.2f}%**")
+        
+        # Consumer Sentiment Risk
+        if sent_val is not None:
+            if sent_val < 50:
+                risks.append(f"• **🔴 Consumer PANIC: Sentiment at {sent_val:.1f}**")
+            elif sent_val < 60:
+                risks.append(f"• **🟡 Weak confidence: Sentiment at {sent_val:.1f}**")
+        
+        # Jobless Claims Risk
+        if claims_val is not None:
+            if claims_val > 350000:
+                risks.append(f"• **🔴 Mass layoffs: Claims at {claims_val/1000:.0f}K**")
+            elif claims_val > 300000:
+                risks.append(f"• **🟡 Labor softening: Claims at {claims_val/1000:.0f}K**")
+        
+        # Inflation Risk (keep existing)
+        if cpi_val is not None:
+            if cpi_val > 4:
+                risks.append(f"• **🔴 High inflation: CPI at {cpi_val:.1f}%**")
+            elif cpi_val > 2.5:
+                risks.append(f"• **🟡 Elevated inflation: CPI at {cpi_val:.1f}%**")
+        
+        # Ultra-low unemployment risk (overheating)
         if unrate_val is not None and unrate_val < 3.5:
-            risks.append("• **Ultra-low unemployment** - Could overheat economy")
-        if cpi_val is not None and cpi_val > 4:
-            risks.append("• **High inflation** - Erodes purchasing power")
-        if hy_val is not None and hy_val > 5:
-            risks.append("• **Wide high yield spreads** - Corporate stress")
-        if vix_val is not None and vix_val > 30:
-            risks.append("• **Elevated VIX** - Market fear/stress")
+            risks.append(f"• **⚡ Ultra-tight labor market ({unrate_val:.1f}%)** - Risk of overheating")
         
         if risks:
             for risk in risks:
@@ -2250,29 +2306,43 @@ with tab1:
         st.markdown("##### 🟢 Strengths")
         strengths = []
         
+        # Yield Curve Strength (steep)
         if spread_val is not None and spread_val > 0.5:
-            strengths.append("• **Steep yield curve** - Growth expectations")
+            strengths.append(f"• **Steep yield curve ({spread_val:.2f}%)** - Growth expectations")
+        
+        # Goldilocks unemployment
         if unrate_val is not None and 3.5 <= unrate_val <= 5:
-            strengths.append("• **Goldilocks unemployment** - Healthy labor market")
+            strengths.append(f"• **Goldilocks unemployment ({unrate_val:.1f}%)** - Healthy labor market")
+        
+        # Inflation at target
         if cpi_val is not None and 2 <= cpi_val <= 3:
-            strengths.append("• **Inflation near target** - Price stability")
+            strengths.append(f"• **Inflation near target ({cpi_val:.1f}%)** - Price stability")
+        
+        # Strong housing
         if hous_val is not None and hous_val > 1500:
-            strengths.append("• **Robust housing starts** - Construction strength")
+            strengths.append(f"• **Robust housing starts ({hous_val/1000:.1f}M)** - Construction strength")
+        
+        # Calm markets
         if vix_val is not None and vix_val < 20:
             strengths.append("• **Low market fear** - Calm markets")
+        
+        # Low oil prices (strength)
+        if oil_val is not None and oil_val < 70:
+            strengths.append(f"• **Low energy costs** - Oil at ${oil_val:.2f}")
+        
+        # Strong consumer sentiment
+        if sent_val is not None and sent_val > 80:
+            strengths.append(f"• **Strong consumer confidence ({sent_val:.1f})**")
+        
+        # Tight credit spreads (strength)
+        if hy_val is not None and hy_val < 3:
+            strengths.append(f"• **Tight credit spreads ({hy_val:.2f}%)** - Low corporate stress")
         
         if strengths:
             for strength in strengths:
                 st.markdown(strength)
         else:
             st.markdown("• Economy showing mixed signals")
-    
-    # Data freshness note
-    st.markdown("""
-    <div class="data-info">
-        *Dates in parentheses show when each value was last updated. Different indicators update at different frequencies.
-    </div>
-    """, unsafe_allow_html=True)
 
 # ============================================================================
 # TAB 2: HISTORY EXPLORER - UPDATED DROPDOWN (58 indicators)
