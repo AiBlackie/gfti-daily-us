@@ -21,6 +21,8 @@ from io import BytesIO
 from pathlib import Path
 import visual_vault
 import time
+import requests
+from io import StringIO
 
 
 # ============================================================================
@@ -50,7 +52,7 @@ st.set_page_config(
 )
 
 # ============================================================================
-# CUSTOM CSS (with trademark styling)
+# CUSTOM CSS (with trademark styling) - ADDED FRESHNESS STYLES
 # ============================================================================
 
 st.markdown("""
@@ -256,6 +258,25 @@ st.markdown("""
         font-weight: bold;
         margin-left: 10px;
     }
+    /* NEW STYLES FROM APP2.PY */
+    .daily-commitment {
+        background: rgba(0,255,0,0.05);
+        border-left: 4px solid #00ff00;
+        padding: 1.5rem;
+        border-radius: 16px;
+        margin: 1.5rem 0;
+    }
+    .freshness-dot {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        margin-right: 5px;
+    }
+    .freshness-daily { background-color: #00ff00; box-shadow: 0 0 10px #00ff00; }
+    .freshness-weekly { background-color: #FFD700; box-shadow: 0 0 10px #FFD700; }
+    .freshness-monthly { background-color: #ff9900; box-shadow: 0 0 10px #ff9900; }
+    .freshness-quarterly { background-color: #4169E1; box-shadow: 0 0 10px #4169E1; }
     @media (max-width: 768px) {
         .metric-value {
             font-size: 1.2rem;
@@ -275,6 +296,48 @@ st.markdown("""
 # ============================================================================
 
 WAR_START_DATE = "2026-02-28"  # Iran-USA war start date (corrected from Feb 23 to Feb 28)
+
+# ============================================================================
+# FREQUENCY CONSTANTS (NEW - FROM APP2.PY)
+# ============================================================================
+
+FREQUENCIES = {
+    'daily': {'name': 'Daily', 'color': '#00ff00', 'emoji': '🟢', 'max_days': 2},
+    'weekly': {'name': 'Weekly', 'color': '#FFD700', 'emoji': '🟡', 'max_days': 9},
+    'monthly': {'name': 'Monthly', 'color': '#ff9900', 'emoji': '🟠', 'max_days': 40},
+    'quarterly': {'name': 'Quarterly', 'color': '#4169E1', 'emoji': '🔵', 'max_days': 999}
+}
+
+# ============================================================================
+# CRISIS THRESHOLDS (NEW - REALISTIC VALUES)
+# ============================================================================
+
+THRESHOLDS = {
+    'vix': {'warning': 25, 'critical': 30},
+    'oil': {'warning': 80, 'critical': 90},
+    'spread': {'warning': 0.2, 'critical': 0},
+    'hy_spread': {'warning': 4, 'critical': 5},
+    'sentiment': {'warning': 60, 'critical': 50},
+    'claims': {'warning': 300000, 'critical': 350000},
+    'unrate': {'warning': 5, 'critical': 7},
+    'cpi': {'warning': 3, 'critical': 5},
+    'financial_stress': {'warning': 0.5, 'critical': 1.0}
+}
+
+# ============================================================================
+# FACTOR WEIGHTS FOR MULTI-FACTOR RECESSION PROBABILITY (REALISTIC)
+# ============================================================================
+
+FACTOR_WEIGHTS = {
+    'war': 0.18,              # Current active war - significant impact
+    'yield_curve': 0.16,      # Yield curve inversion - historically reliable
+    'oil': 0.14,               # Oil shocks - major recession trigger
+    'vix': 0.12,               # Market fear - immediate sentiment
+    'credit': 0.11,            # Credit spreads - corporate distress
+    'sentiment': 0.10,         # Consumer confidence - spending impact
+    'unemployment': 0.10,      # Labor market - lagging but critical
+    'inflation': 0.09          # Inflation - Fed response driver
+}
 
 # ============================================================================
 # INDICATOR CLASSIFICATION - TRANSPARENT BREAKDOWN
@@ -341,9 +404,6 @@ REAL_INDICATORS = RAW_INDICATORS + CALCULATED_INDICATORS
 # ============================================================================
 # EMAIL FUNCTIONS - USING FORMSPREE WITH SECRETS
 # ============================================================================
-
-import requests
-from datetime import datetime
 
 def send_email_notification(email, interest):
     """Send email notification via Formspree using secrets"""
@@ -442,6 +502,22 @@ HISTORICAL_EVENTS = [
     {'start': '2020-02-01', 'end': '2020-04-30', 'label': 'COVID-19', 'category': 'recession',
      'description': 'Pandemic shutdowns, fastest crash/recovery', 'color': 'rgba(255,0,0,0.15)'},
     
+    # Wars & Geopolitical Events
+    {'date': '1973-10-06', 'label': 'Yom Kippur War', 'category': 'war',
+     'description': 'Oil embargo, prices quadruple', 'marker': '⚔️', 'y_offset': 0},
+    {'date': '1979-11-04', 'label': 'Iran Hostage Crisis', 'category': 'war',
+     'description': 'Oil prices spike', 'marker': '⚔️', 'y_offset': 1},
+    {'date': '1990-08-02', 'label': 'Gulf War', 'category': 'war',
+     'description': 'Iraq invades Kuwait, oil spikes', 'marker': '⚔️', 'y_offset': -1},
+    {'date': '2001-09-11', 'label': '9/11 Attacks', 'category': 'war',
+     'description': 'Markets closed, Fed provides liquidity', 'marker': '⚔️', 'y_offset': 0},
+    {'date': '2003-03-20', 'label': 'Iraq War', 'category': 'war',
+     'description': 'US invades Iraq', 'marker': '⚔️', 'y_offset': 1},
+    {'date': '2022-02-24', 'label': 'Russia-Ukraine War', 'category': 'war',
+     'description': 'Energy crisis begins', 'marker': '⚔️', 'y_offset': -1},
+    {'date': WAR_START_DATE, 'label': 'Iran-USA War', 'category': 'war',
+     'description': 'US and Israel strike Iran', 'marker': '⚔️', 'y_offset': -2},
+    
     # Major Market Events
     {'date': '1971-08-15', 'label': 'Nixon Shock', 'category': 'policy',
      'description': 'End of gold standard, Bretton Woods collapses', 'marker': '💰', 'y_offset': 0},
@@ -453,8 +529,6 @@ HISTORICAL_EVENTS = [
      'description': 'Fed surprises with rate hikes, bond losses', 'marker': '💰', 'y_offset': -1},
     {'date': '1998-09-23', 'label': 'LTCM Bailout', 'category': 'crisis',
      'description': 'Hedge fund collapse, Fed orchestrates bailout', 'marker': '⚠️', 'y_offset': -1},
-    {'date': '2001-09-11', 'label': '9/11 Attacks', 'category': 'geopolitical',
-     'description': 'Markets closed, Fed provides liquidity', 'marker': '🇺🇸', 'y_offset': 0},
     {'date': '2008-09-15', 'label': 'Lehman Collapse', 'category': 'crisis',
      'description': 'Lehman Brothers fails, financial panic peaks', 'marker': '💥', 'y_offset': -2},
     {'date': '2008-10-03', 'label': 'TARP Passed', 'category': 'policy',
@@ -477,8 +551,6 @@ HISTORICAL_EVENTS = [
      'description': 'CPI begins multi-year rise', 'marker': '📈', 'y_offset': 2},
     {'date': '2022-03-16', 'label': 'Hike Cycle Begins', 'category': 'fed',
      'description': 'Fed starts fastest hiking cycle since 1980s', 'marker': '🏦', 'y_offset': -2},
-    {'date': WAR_START_DATE, 'label': 'Iran-USA War Begins', 'category': 'geopolitical',
-     'description': 'US and Israel launch coordinated strikes on Iran', 'marker': '💥', 'y_offset': -2},
 ]
 
 # ============================================================================
@@ -615,9 +687,6 @@ def get_compliance_footer():
 # ============================================================================
 # LOAD DATA FUNCTIONS - UPDATED WITH GOOGLE DRIVE
 # ============================================================================
-
-import requests
-from io import StringIO
 
 @st.cache_data(ttl=3600)  # Cache for 1 hour
 def load_master_data():
@@ -790,8 +859,229 @@ def format_change(current, prev, decimals=2, is_percent=True):
     unit = "%" if is_percent else ""
     return f"{emoji} {abs(diff):.{decimals}f}{unit}", color, emoji
 
+# ============================================================================
+# REPLACED: Simple get_recession_probability with MULTI-FACTOR VERSION
+# ============================================================================
+
+def get_factor_probability(value, factor_type):
+    """
+    Convert a raw value to a probability (0-100) based on factor type and thresholds
+    Always returns a number between 0-100, never None
+    """
+    if factor_type == 'war':
+        # War factor: based on days since war started
+        war_start = pd.to_datetime(WAR_START_DATE)
+        days_since = (datetime.now() - war_start).days
+        if days_since < 0:
+            return 15  # War hasn't started yet
+        elif days_since < 30:
+            return 60 + (days_since * 0.5)  # Escalating
+        elif days_since < 90:
+            return 75 + ((days_since - 30) * 0.1)  # Sustained
+        else:
+            return 85  # Protracted conflict
+    
+    # For all other factors, check if value is None or NaN
+    if pd.isna(value) or value is None:
+        return 15  # Default low probability when data missing
+    
+    if factor_type == 'yield_curve':
+        if value < -0.5:
+            return 85
+        elif value < 0:
+            return 70
+        elif value < 0.2:
+            return 50
+        elif value < 0.5:
+            return 30
+        else:
+            return 15
+    
+    elif factor_type == 'oil':
+        if value > 100:
+            return 90
+        elif value > 90:
+            return 80
+        elif value > 80:
+            return 65
+        elif value > 70:
+            return 45
+        elif value > 60:
+            return 25
+        else:
+            return 15
+    
+    elif factor_type == 'vix':
+        if value > 40:
+            return 95
+        elif value > 30:
+            return 75
+        elif value > 25:
+            return 55
+        elif value > 20:
+            return 35
+        else:
+            return 15
+    
+    elif factor_type == 'credit':
+        if value > 6:
+            return 90
+        elif value > 5:
+            return 75
+        elif value > 4:
+            return 55
+        elif value > 3:
+            return 35
+        else:
+            return 15
+    
+    elif factor_type == 'sentiment':
+        if value < 50:
+            return 85
+        elif value < 60:
+            return 65
+        elif value < 70:
+            return 45
+        elif value < 80:
+            return 25
+        else:
+            return 15
+    
+    elif factor_type == 'unemployment':
+        if value > 8:
+            return 90
+        elif value > 6:
+            return 70
+        elif value > 5:
+            return 45
+        else:
+            return 20
+    
+    elif factor_type == 'inflation':
+        if value > 6:
+            return 80
+        elif value > 4:
+            return 60
+        elif value > 3:
+            return 40
+        elif value > 2:
+            return 20
+        else:
+            return 15
+    
+    else:
+        return 50
+
+def calculate_multi_factor_probability(df, include_war=True):
+    """
+    Calculate recession probability using multiple factors with realistic weights
+    """
+    # Get current values
+    spread_val, _ = get_latest_value(df, '10Y2Y')
+    oil_val, _ = get_latest_value(df, 'DCOILWTICO')
+    vix_val, _ = get_latest_value(df, 'VIX')
+    hy_val, _ = get_latest_value(df, 'HY_SPREAD')
+    sent_val, _ = get_latest_value(df, 'UMCSENT')
+    unrate_val, _ = get_latest_value(df, 'UNRATE')
+    cpi_val, _ = get_latest_value(df, 'CPI_YOY')
+    
+    # Build list of available factors with their probabilities and weights
+    factors = []
+    
+    # War factor
+    if include_war:
+        war_prob = get_factor_probability(None, 'war')
+        # war_prob is always a number from get_factor_probability
+        factors.append({
+            'name': 'War/Geopolitical',
+            'prob': war_prob,
+            'weight': FACTOR_WEIGHTS['war'],
+            'status': 'ACTIVE' if war_prob > 50 else 'INACTIVE'
+        })
+    
+    # Yield curve
+    if spread_val is not None:
+        spread_prob = get_factor_probability(spread_val, 'yield_curve')
+        factors.append({
+            'name': 'Yield Curve',
+            'prob': spread_prob,
+            'weight': FACTOR_WEIGHTS['yield_curve'],
+            'status': 'INVERTED' if spread_val < 0 else 'NORMAL'
+        })
+    
+    # Oil
+    if oil_val is not None:
+        oil_prob = get_factor_probability(oil_val, 'oil')
+        factors.append({
+            'name': 'Oil Prices',
+            'prob': oil_prob,
+            'weight': FACTOR_WEIGHTS['oil'],
+            'status': 'HIGH' if oil_val > 80 else 'NORMAL'
+        })
+    
+    # VIX
+    if vix_val is not None:
+        vix_prob = get_factor_probability(vix_val, 'vix')
+        factors.append({
+            'name': 'Market Fear (VIX)',
+            'prob': vix_prob,
+            'weight': FACTOR_WEIGHTS['vix'],
+            'status': 'PANIC' if vix_val > 30 else 'FEAR' if vix_val > 25 else 'NORMAL'
+        })
+    
+    # Credit spreads
+    if hy_val is not None:
+        hy_prob = get_factor_probability(hy_val, 'credit')
+        factors.append({
+            'name': 'Credit Spreads',
+            'prob': hy_prob,
+            'weight': FACTOR_WEIGHTS['credit'],
+            'status': 'CRUNCH' if hy_val > 5 else 'STRESS' if hy_val > 4 else 'NORMAL'
+        })
+    
+    # Consumer sentiment
+    if sent_val is not None:
+        sent_prob = get_factor_probability(sent_val, 'sentiment')
+        factors.append({
+            'name': 'Consumer Sentiment',
+            'prob': sent_prob,
+            'weight': FACTOR_WEIGHTS['sentiment'],
+            'status': 'PANIC' if sent_val < 50 else 'WEAK' if sent_val < 60 else 'NORMAL'
+        })
+    
+    # Unemployment
+    if unrate_val is not None:
+        unrate_prob = get_factor_probability(unrate_val, 'unemployment')
+        factors.append({
+            'name': 'Unemployment',
+            'prob': unrate_prob,
+            'weight': FACTOR_WEIGHTS['unemployment'],
+            'status': 'HIGH' if unrate_val > 5 else 'NORMAL'
+        })
+    
+    # Inflation
+    if cpi_val is not None:
+        cpi_prob = get_factor_probability(cpi_val, 'inflation')
+        factors.append({
+            'name': 'Inflation',
+            'prob': cpi_prob,
+            'weight': FACTOR_WEIGHTS['inflation'],
+            'status': 'HIGH' if cpi_val > 3 else 'NORMAL'
+        })
+    
+    # Calculate weighted probability
+    total_weight = sum(f['weight'] for f in factors)
+    if total_weight == 0 or len(factors) == 0:
+        return None, []
+    
+    weighted_prob = sum(f['prob'] * f['weight'] for f in factors) / total_weight
+    
+    return weighted_prob, factors
+
 def get_recession_probability(spread):
-    """Calculate recession probability from yield spread"""
+    """
+    Legacy function - kept for backward compatibility
+    """
     if pd.isna(spread):
         return None, None, None
     
@@ -803,6 +1093,203 @@ def get_recession_probability(spread):
         return 40, "ELEVATED", "#FFD700"
     else:
         return 15, "LOW", "#00ff00"
+
+def display_multi_factor_probability(df):
+    """
+    Display the multi-factor recession probability in a nice card format
+    """
+    prob, factors = calculate_multi_factor_probability(df)
+    
+    if prob is None:
+        st.warning("Insufficient data to calculate multi-factor probability")
+        return
+    
+    # Determine color and label
+    if prob >= 80:
+        color = '#ff4d4d'
+        label = '🔴 CRITICAL'
+        description = "Multiple factors at crisis levels. Historical parallels to 1973/1979/2008."
+    elif prob >= 60:
+        color = '#ff9933'
+        label = '🟡 HIGH'
+        description = "Strong warning signals. Recession risk significantly elevated."
+    elif prob >= 40:
+        color = '#FFD700'
+        label = '🟠 ELEVATED'
+        description = "Mixed signals but concerning. Monitor closely."
+    elif prob >= 20:
+        color = '#4169E1'
+        label = '🔵 MODERATE'
+        description = "Normal economic variation with some risks."
+    else:
+        color = '#00ff00'
+        label = '🟢 LOW'
+        description = "Benign conditions. Low recession risk."
+    
+    # Display main card
+    st.markdown(f"""
+    <div style="background: {color}20; padding: 30px; border-radius: 20px; border-left: 8px solid {color}; margin: 20px 0;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
+            <div>
+                <div style="color: #888; font-size: 0.9rem; text-transform: uppercase;">MULTI-FACTOR RECESSION PROBABILITY</div>
+                <div style="font-size: 5rem; font-weight: 800; color: {color};">{prob:.0f}%</div>
+                <div style="color: {color}; font-size: 1.5rem;">{label}</div>
+                <div style="color: #ccc; margin-top: 10px;">{description}</div>
+            </div>
+            <div style="text-align: right;">
+                <div style="color: #FFD700;">⚠️ 8-Factor Model</div>
+                <div style="color: #888; font-size: 0.8rem;">Using {len(factors)} factors with dynamic weights</div>
+                <div style="color: #888; font-size: 0.8rem;">Includes active war factor</div>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Factor breakdown in columns
+    st.markdown("### 🔍 Factor Breakdown")
+    
+    # Create columns for the grid (4 per row)
+    cols = st.columns(4)
+    for i, factor in enumerate(factors):
+        with cols[i % 4]:
+            if factor['prob'] >= 80:
+                f_color = '#ff4d4d'
+            elif factor['prob'] >= 60:
+                f_color = '#ff9933'
+            elif factor['prob'] >= 40:
+                f_color = '#FFD700'
+            else:
+                f_color = '#00ff00'
+            
+            st.markdown(f"""
+            <div style="background: #1a1a1a; padding: 10px; border-radius: 8px; margin: 5px; border-left: 3px solid {f_color};">
+                <div style="color: #888; font-size: 0.7rem;">{factor['name']}</div>
+                <div style="font-size: 1.5rem; color: white;">{factor['prob']:.0f}%</div>
+                <div style="color: {f_color}; font-size: 0.6rem;">{factor['status']}</div>
+                <div style="color: #888; font-size: 0.6rem;">Weight: {factor['weight']*100:.0f}%</div>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    return prob
+
+# ============================================================================
+# ENHANCED HISTORICAL MATCHES WITH MULTI-FACTOR SIMILARITY
+# ============================================================================
+
+def find_multi_factor_historical_matches(df, current_date=None, n=10):
+    """
+    Find historical periods with similar multi-factor profiles
+    Calculates similarity based on all available factors
+    """
+    if current_date is None or pd.isna(current_date):
+        valid_dates = df[df['date'].notna()]['date']
+        if not valid_dates.empty:
+            current_date = valid_dates.iloc[-1]
+        else:
+            current_date = datetime.now()
+    
+    # Get current values for all factors
+    current_values = {}
+    factor_columns = {
+        'DGS10': 'yield',
+        '10Y2Y': 'spread',
+        'DCOILWTICO': 'oil',
+        'VIX': 'vix',
+        'HY_SPREAD': 'credit',
+        'UMCSENT': 'sentiment',
+        'UNRATE': 'unemployment',
+        'CPI_YOY': 'inflation'
+    }
+    
+    for col, name in factor_columns.items():
+        val, _ = get_latest_value(df, col)
+        if val is not None:
+            current_values[name] = val
+    
+    # Create historical dataset (exclude last 30 days)
+    mask = df['date'] < current_date - pd.Timedelta(days=30)
+    candidates = df[mask].copy()
+    
+    if len(candidates) == 0:
+        return pd.DataFrame()
+    
+    # Calculate similarity score for each candidate
+    similarity_scores = []
+    
+    for idx, row in candidates.iterrows():
+        score = 0
+        factors_used = 0
+        
+        # Yield curve similarity (weight: 0.25)
+        if 'spread' in current_values and '10Y2Y' in row and pd.notna(row['10Y2Y']):
+            spread_diff = abs(row['10Y2Y'] - current_values['spread'])
+            spread_score = max(0, 100 - (spread_diff * 50))
+            score += spread_score * 0.25
+            factors_used += 0.25
+        
+        # Oil similarity (weight: 0.15)
+        if 'oil' in current_values and 'DCOILWTICO' in row and pd.notna(row['DCOILWTICO']):
+            oil_diff = abs(row['DCOILWTICO'] - current_values['oil'])
+            oil_score = max(0, 100 - (oil_diff * 0.5))
+            score += oil_score * 0.15
+            factors_used += 0.15
+        
+        # VIX similarity (weight: 0.15)
+        if 'vix' in current_values and 'VIX' in row and pd.notna(row['VIX']):
+            vix_diff = abs(row['VIX'] - current_values['vix'])
+            vix_score = max(0, 100 - (vix_diff * 2))
+            score += vix_score * 0.15
+            factors_used += 0.15
+        
+        # Credit similarity (weight: 0.15)
+        if 'credit' in current_values and 'HY_SPREAD' in row and pd.notna(row['HY_SPREAD']):
+            credit_diff = abs(row['HY_SPREAD'] - current_values['credit'])
+            credit_score = max(0, 100 - (credit_diff * 10))
+            score += credit_score * 0.15
+            factors_used += 0.15
+        
+        # Sentiment similarity (weight: 0.10)
+        if 'sentiment' in current_values and 'UMCSENT' in row and pd.notna(row['UMCSENT']):
+            sent_diff = abs(row['UMCSENT'] - current_values['sentiment'])
+            sent_score = max(0, 100 - (sent_diff * 1))
+            score += sent_score * 0.10
+            factors_used += 0.10
+        
+        # Unemployment similarity (weight: 0.10)
+        if 'unemployment' in current_values and 'UNRATE' in row and pd.notna(row['UNRATE']):
+            unrate_diff = abs(row['UNRATE'] - current_values['unemployment'])
+            unrate_score = max(0, 100 - (unrate_diff * 10))
+            score += unrate_score * 0.10
+            factors_used += 0.10
+        
+        # Inflation similarity (weight: 0.10)
+        if 'inflation' in current_values and 'CPI_YOY' in row and pd.notna(row['CPI_YOY']):
+            cpi_diff = abs(row['CPI_YOY'] - current_values['inflation'])
+            cpi_score = max(0, 100 - (cpi_diff * 10))
+            score += cpi_score * 0.10
+            factors_used += 0.10
+        
+        # Normalize score by factors used
+        if factors_used > 0:
+            normalized_score = score / factors_used
+            similarity_scores.append({
+                'date': row['date'],
+                'similarity': normalized_score,
+                'factors_used': factors_used
+            })
+    
+    # Convert to DataFrame and sort
+    similarity_df = pd.DataFrame(similarity_scores)
+    if similarity_df.empty:
+        return pd.DataFrame()
+    
+    similarity_df = similarity_df.sort_values('similarity', ascending=False)
+    
+    # Remove duplicates by month
+    similarity_df['month_key'] = similarity_df['date'].dt.strftime('%Y-%m')
+    similarity_df = similarity_df.drop_duplicates(subset=['month_key'], keep='first')
+    
+    return similarity_df.head(n)
 
 def get_vix_status(vix):
     """Interpret VIX levels"""
@@ -822,6 +1309,88 @@ def format_value(value, decimals=2, prefix="", suffix=""):
     if isinstance(value, float):
         return f"{prefix}{value:.{decimals}f}{suffix}"
     return f"{prefix}{value}{suffix}"
+
+# ============================================================================
+# FRESHNESS FUNCTIONS (NEW - FROM APP2.PY)
+# ============================================================================
+
+def safe_date_format(date_val, format_string='%b %d, %Y'):
+    """Safely format a date, handling None, NaT, and various date types"""
+    if date_val is None:
+        return "Unknown"
+    
+    try:
+        if pd.isna(date_val):
+            return "Unknown"
+    except:
+        pass
+    
+    if isinstance(date_val, str):
+        try:
+            date_val = pd.to_datetime(date_val, format='%d/%m/%Y', dayfirst=True)
+        except:
+            try:
+                date_val = pd.to_datetime(date_val)
+            except:
+                return str(date_val)
+    
+    if hasattr(date_val, 'strftime'):
+        try:
+            if pd.isna(date_val):
+                return "Unknown"
+            return date_val.strftime(format_string)
+        except:
+            return "Unknown"
+    
+    return str(date_val)
+
+def get_frequency_category(days_old):
+    """Categorize data freshness by days since last update"""
+    if days_old <= FREQUENCIES['daily']['max_days']:
+        return 'daily'
+    elif days_old <= FREQUENCIES['weekly']['max_days']:
+        return 'weekly'
+    elif days_old <= FREQUENCIES['monthly']['max_days']:
+        return 'monthly'
+    else:
+        return 'quarterly'
+
+def get_last_update(df, column):
+    """Get the last update date for a column"""
+    if column not in df.columns:
+        return None
+    
+    valid_data = df[df[column].notna()]
+    if valid_data.empty:
+        return None
+    
+    return valid_data.iloc[-1]['date']
+
+def create_freshness_dashboard(df):
+    """Create a dashboard showing data freshness by indicator"""
+    
+    freshness_data = []
+    
+    for col in df.columns:
+        if col != 'date' and not col.endswith('_RAW') and not col.endswith('_IS_QUARTERLY') and not col.endswith('_INV'):
+            last_date = get_last_update(df, col)
+            if last_date:
+                days_old = (datetime.now() - last_date).days
+                freq = get_frequency_category(days_old)
+                
+                freshness_data.append({
+                    'Indicator': col,
+                    'Last Update': safe_date_format(last_date, '%Y-%m-%d'),
+                    'Days Old': days_old,
+                    'Frequency': FREQUENCIES[freq]['name'],
+                    'Color': FREQUENCIES[freq]['color'],
+                    'Emoji': FREQUENCIES[freq]['emoji']
+                })
+    
+    freshness_df = pd.DataFrame(freshness_data)
+    freq_counts = freshness_df['Frequency'].value_counts()
+    
+    return freshness_df, freq_counts
 
 def find_historical_matches(df, current_yield, current_date, n=5, era="All History"):
     """Find the closest historical matches for today's yield - FIXED to remove duplicates"""
@@ -1080,7 +1649,7 @@ def check_crisis_signals(df, war_start_date=WAR_START_DATE):
     # VIX ALERTS (Market Fear)
     # =========================================
     if vix_val is not None:
-        if vix_val > 30:
+        if vix_val > THRESHOLDS['vix']['critical']:
             alerts.append({
                 'level': '🔴 CRITICAL',
                 'indicator': 'VIX',
@@ -1090,7 +1659,7 @@ def check_crisis_signals(df, war_start_date=WAR_START_DATE):
                 'date': vix_date,
                 'color': '#ff4d4d'
             })
-        elif vix_val > 25:
+        elif vix_val > THRESHOLDS['vix']['warning']:
             alerts.append({
                 'level': '🟡 WARNING',
                 'indicator': 'VIX',
@@ -1105,7 +1674,7 @@ def check_crisis_signals(df, war_start_date=WAR_START_DATE):
     # OIL ALERTS (Energy Shock)
     # =========================================
     if oil_val is not None:
-        if oil_val > 90:
+        if oil_val > THRESHOLDS['oil']['critical']:
             alerts.append({
                 'level': '🔴 CRITICAL',
                 'indicator': 'OIL',
@@ -1115,7 +1684,7 @@ def check_crisis_signals(df, war_start_date=WAR_START_DATE):
                 'date': oil_date,
                 'color': '#ff4d4d'
             })
-        elif oil_val > 80:
+        elif oil_val > THRESHOLDS['oil']['warning']:
             alerts.append({
                 'level': '🟡 WARNING',
                 'indicator': 'OIL',
@@ -1130,7 +1699,7 @@ def check_crisis_signals(df, war_start_date=WAR_START_DATE):
     # YIELD CURVE ALERTS (Recession Signal)
     # =========================================
     if spread_val is not None:
-        if spread_val < 0:
+        if spread_val < THRESHOLDS['spread']['critical']:
             alerts.append({
                 'level': '🔴 CRITICAL',
                 'indicator': 'YIELD CURVE',
@@ -1140,7 +1709,7 @@ def check_crisis_signals(df, war_start_date=WAR_START_DATE):
                 'date': spread_date,
                 'color': '#ff4d4d'
             })
-        elif spread_val < 0.2:
+        elif spread_val < THRESHOLDS['spread']['warning']:
             alerts.append({
                 'level': '🟡 WARNING',
                 'indicator': 'YIELD CURVE',
@@ -1155,7 +1724,7 @@ def check_crisis_signals(df, war_start_date=WAR_START_DATE):
     # CREDIT SPREAD ALERTS (Corporate Stress)
     # =========================================
     if hy_val is not None:
-        if hy_val > 5:
+        if hy_val > THRESHOLDS['hy_spread']['critical']:
             alerts.append({
                 'level': '🔴 CRITICAL',
                 'indicator': 'CREDIT',
@@ -1165,7 +1734,7 @@ def check_crisis_signals(df, war_start_date=WAR_START_DATE):
                 'date': hy_date,
                 'color': '#ff4d4d'
             })
-        elif hy_val > 4:
+        elif hy_val > THRESHOLDS['hy_spread']['warning']:
             alerts.append({
                 'level': '🟡 WARNING',
                 'indicator': 'CREDIT',
@@ -1180,7 +1749,7 @@ def check_crisis_signals(df, war_start_date=WAR_START_DATE):
     # CONSUMER SENTIMENT ALERTS (Confidence)
     # =========================================
     if sent_val is not None:
-        if sent_val < 50:
+        if sent_val < THRESHOLDS['sentiment']['critical']:
             alerts.append({
                 'level': '🔴 CRITICAL',
                 'indicator': 'SENTIMENT',
@@ -1190,7 +1759,7 @@ def check_crisis_signals(df, war_start_date=WAR_START_DATE):
                 'date': sent_date,
                 'color': '#ff4d4d'
             })
-        elif sent_val < 60:
+        elif sent_val < THRESHOLDS['sentiment']['warning']:
             alerts.append({
                 'level': '🟡 WARNING',
                 'indicator': 'SENTIMENT',
@@ -1205,7 +1774,7 @@ def check_crisis_signals(df, war_start_date=WAR_START_DATE):
     # JOBLESS CLAIMS ALERTS (Layoffs)
     # =========================================
     if claims_val is not None:
-        if claims_val > 350000:
+        if claims_val > THRESHOLDS['claims']['critical']:
             alerts.append({
                 'level': '🔴 CRITICAL',
                 'indicator': 'CLAIMS',
@@ -1215,7 +1784,7 @@ def check_crisis_signals(df, war_start_date=WAR_START_DATE):
                 'date': claims_date,
                 'color': '#ff4d4d'
             })
-        elif claims_val > 300000:
+        elif claims_val > THRESHOLDS['claims']['warning']:
             alerts.append({
                 'level': '🟡 WARNING',
                 'indicator': 'CLAIMS',
@@ -1736,6 +2305,26 @@ df = load_data_with_spinner()
 if df is None:
     st.stop()
 
+# ============================================================================
+# NEW: GFTI DAILY COMMITMENT BANNER (FROM APP2.PY)
+# ============================================================================
+
+st.markdown(f"""
+<div class="daily-commitment">
+    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+        <span style="color: #00ff00; font-weight: bold; font-size: 1.1rem;">📅 GFTI Daily™ means:</span>
+    </div>
+    <div style="display: flex; gap: 30px; flex-wrap: wrap; margin-bottom: 10px;">
+        <div><span style="color: #00ff00;">✓</span> We check all 58 sources daily</div>
+        <div><span style="color: #00ff00;">✓</span> We update the dashboard daily</div>
+        <div><span style="color: #00ff00;">✓</span> You get the latest data every day</div>
+    </div>
+    <div style="color: #888; margin-top: 10px; font-size: 0.9rem;">
+        (Data releases follow their natural frequency: 🟢 daily yields & markets, 🟡 weekly claims, 🟠 monthly CPI & housing, 🔵 quarterly GDP)
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
 # Show update note about data timing
 st.markdown("""
 <div class="update-note">
@@ -1760,18 +2349,19 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# Create tabs - ADDED ATTRIBUTION TAB
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+# Create tabs - ADDED DATA FRESHNESS TAB
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "📊 Today's Story", 
     "📈 History Explorer", 
     "🔍 Historical Matches",
     "📦 Data Shop",
     "📋 Attribution & Legal",
-    "🎨 Visual Vault"
+    "🎨 Visual Vault",
+    "📅 Data Freshness"  # NEW TAB!
 ])
 
 # ============================================================================
-# TAB 1: TODAY'S STORY
+# TAB 1: TODAY'S STORY - UPDATED WITH MULTI-FACTOR PROBABILITY
 # ============================================================================
 
 with tab1:
@@ -1797,7 +2387,7 @@ with tab1:
     hy_val, hy_date = get_latest_value(df, 'HY_SPREAD', ['HY_SPREAD', 'BAMLH0A0HYM2'])
     oil_val, oil_date = get_latest_value(df, 'DCOILWTICO', ['DCOILWTICO'])
     
-        # Helper function to safely format dates for display
+    # Helper function to safely format dates for display
     def safe_date_short(date_val):
         """Safely format a date for display, handling None, NaT, and various date types"""
         if date_val is None:
@@ -1931,16 +2521,36 @@ with tab1:
             st.markdown(f"- {point}")
     
     with col2:
-        # Recession probability
-        prob, label, color = get_recession_probability(spread_val)
+        # =========================================
+        # REPLACED: Simple probability with MULTI-FACTOR PROBABILITY
+        # =========================================
+        prob, _ = calculate_multi_factor_probability(df)
         if prob:
+            # Determine color based on probability
+            if prob >= 80:
+                color = "#ff4d4d"
+                label = "CRITICAL"
+            elif prob >= 60:
+                color = "#ff9933"
+                label = "HIGH"
+            elif prob >= 40:
+                color = "#FFD700"
+                label = "ELEVATED"
+            elif prob >= 20:
+                color = "#4169E1"
+                label = "MODERATE"
+            else:
+                color = "#00ff00"
+                label = "LOW"
+            
             st.markdown(f"""
             <div style="background: {color}20; padding: 20px; border-radius: 10px; border-left: 4px solid {color};">
                 <div style="text-align: center;">
-                    <div style="color: #888;">RECESSION PROBABILITY</div>
-                    <div style="font-size: 48px; font-weight: bold; color: {color};">{prob}%</div>
+                    <div style="color: #888;">MULTI-FACTOR</div>
+                    <div style="color: #888; font-size: 0.8rem;">RECESSION PROBABILITY</div>
+                    <div style="font-size: 48px; font-weight: bold; color: {color};">{prob:.0f}%</div>
                     <div style="color: {color};">{label}</div>
-                    <div style="color: #888; font-size: 0.8rem;">Next 12 months</div>
+                    <div style="color: #888; font-size: 0.8rem;">Next 12 months (8 factors)</div>
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -2217,7 +2827,7 @@ with tab1:
         </div>
         """, unsafe_allow_html=True)
     
-        # =========================================
+    # =========================================
     # THE FULL STORY SUMMARY - UPDATED WITH ALL CRISIS INDICATORS
     # =========================================
     
@@ -2519,83 +3129,149 @@ with tab2:
         st.warning(f"Indicator {col_name} not available in dataset")
 
 # ============================================================================
-# TAB 3: HISTORICAL MATCHES (ENHANCED)
+# TAB 3: HISTORICAL MATCHES (ENHANCED WITH MULTI-FACTOR SIMILARITY)
 # ============================================================================
 
 with tab3:
-    st.markdown('<div class="sub-header">🔍 Historical Matches: Where Have We Seen This Before?</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-header">🔍 Historical Matches: Multi-Factor Similarity Analysis</div>', unsafe_allow_html=True)
     
-    if 'DGS10' in df.columns:
-        latest_yield = df[df['DGS10'].notna()].iloc[-1]['DGS10'] if not df[df['DGS10'].notna()].empty else None
-        latest_date = df[df['DGS10'].notna()].iloc[-1]['date'] if not df[df['DGS10'].notna()].empty else None
+    st.markdown("""
+    <div style="background: rgba(255,215,0,0.1); padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+        <p style="color: white; margin: 0;">
+            <span style="color: #FFD700;">🎯 Multi-Factor Analysis:</span> Finding historical periods with similar 
+            yield curve, oil prices, market fear (VIX), credit spreads, consumer sentiment, unemployment, and inflation.
+            Higher similarity score = more comparable economic environment.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Get current values for context
+    spread_val, _ = get_latest_value(df, '10Y2Y')
+    oil_val, _ = get_latest_value(df, 'DCOILWTICO')
+    vix_val, _ = get_latest_value(df, 'VIX')
+    hy_val, _ = get_latest_value(df, 'HY_SPREAD')
+    sent_val, _ = get_latest_value(df, 'UMCSENT')
+    unrate_val, _ = get_latest_value(df, 'UNRATE')
+    cpi_val, _ = get_latest_value(df, 'CPI_YOY')
+    
+    st.markdown(f"""
+    <div style="background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%); 
+                padding: 15px; border-radius: 8px; margin: 10px 0;">
+        <h4 style="color: #FFD700; margin: 0;">Current Multi-Factor Profile</h4>
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 10px;">
+            <div><span style="color: #888;">Spread:</span> {format_value(spread_val, 2)}%</div>
+            <div><span style="color: #888;">Oil:</span> {format_value(oil_val, 2, '$')}</div>
+            <div><span style="color: #888;">VIX:</span> {format_value(vix_val, 1)}</div>
+            <div><span style="color: #888;">Credit:</span> {format_value(hy_val, 2)}%</div>
+            <div><span style="color: #888;">Sentiment:</span> {format_value(sent_val, 1)}</div>
+            <div><span style="color: #888;">Unemp:</span> {format_value(unrate_val, 1)}%</div>
+            <div><span style="color: #888;">CPI:</span> {format_value(cpi_val, 1)}%</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Find multi-factor matches
+    matches = find_multi_factor_historical_matches(df, current_date=df['date'].iloc[-1], n=10)
+    
+    if not matches.empty:
+        st.markdown("### 📊 Top 10 Historical Multi-Factor Matches")
+        st.markdown("*Ranked by overall similarity to today's economic profile*")
         
-        if latest_yield is not None:
-            # Get current context
-            current_unrate = df[df['UNRATE'].notna()].iloc[-1]['UNRATE'] if 'UNRATE' in df.columns else None
-            current_cpi = df[df['CPI_YOY'].notna()].iloc[-1]['CPI_YOY'] if 'CPI_YOY' in df.columns else None
+        for i, (_, match) in enumerate(matches.iterrows(), 1):
+            # Get the full row data for this match
+            match_row = df[df['date'] == match['date']].iloc[0]
             
-            # Current environment card
-            st.markdown(f"""
-            <div style="background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%); 
-                        padding: 15px; border-radius: 8px; margin: 10px 0;">
-                <h4 style="color: #FFD700; margin: 0;">Current Economic Environment</h4>
-                <p style="color: white; margin: 5px 0;">
-                    10Y Yield: {latest_yield:.2f}% • 
-                    Unemployment: {current_unrate:.1f}% • 
-                    Inflation: {current_cpi:.1f}%
-                </p>
-            </div>
-            """, unsafe_allow_html=True)
+            # Get values for display
+            match_spread = match_row.get('10Y2Y', None)
+            match_oil = match_row.get('DCOILWTICO', None)
+            match_vix = match_row.get('VIX', None)
+            match_hy = match_row.get('HY_SPREAD', None)
+            match_sent = match_row.get('UMCSENT', None)
+            match_unrate = match_row.get('UNRATE', None)
+            match_cpi = match_row.get('CPI_YOY', None)
             
-            # Era selector
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                era = st.radio(
-                    "Focus on:", 
-                    ["All History", "Pre-2000", "Post-2000"], 
-                    horizontal=True,
-                    help="Compare current yields with different historical periods"
-                )
+            # Determine if this period led to crisis
+            year = match['date'].year
+            crisis_years = [1973, 1980, 1981, 1990, 2001, 2007, 2008, 2020]
+            led_to_crisis = year in crisis_years
             
-            matches = find_historical_matches(df, latest_yield, latest_date, n=5, era=era)
-            
-            if not matches.empty:
-                # Summary stats
-                crisis_count = matches['led_to_crisis'].sum()
-                st.markdown(f"""
-                <div class="era-selector">
-                    <strong>{crisis_count} of 5</strong> similar periods led to crisis within 12 months
-                </div>
-                """, unsafe_allow_html=True)
-                
-                for i, (_, match) in enumerate(matches.iterrows(), 1):
-                    with st.expander(f"Match #{i}: {match['date'].strftime('%B %Y')} (Similarity: {match['similarity']:.0f}%)", expanded=(i==1)):
-                        
-                        col1, col2 = st.columns(2)
-                        
-                        with col1:
-                            st.markdown(f"**Yield then:** {match['DGS10']:.2f}%")
-                            if pd.notna(match['unrate_then']):
-                                st.markdown(f"**Unemployment then:** {match['unrate_then']:.1f}%")
-                            if pd.notna(match['cpi_then']):
-                                st.markdown(f"**Inflation then:** {match['cpi_then']:.1f}%")
-                        
-                        with col2:
-                            outcome = "🔴 LED TO CRISIS" if match['led_to_crisis'] else "🟢 NO CRISIS"
-                            st.markdown(f"**Outcome:** {outcome}")
-                            if pd.notna(match['yield_12m']):
-                                change = match['yield_12m'] - match['DGS10']
-                                direction = "▲" if change > 0 else "▼"
-                                st.markdown(f"**12 months later:** {match['yield_12m']:.2f}% ({direction} {abs(change):.2f}%)")
-                        
-                        if pd.notna(match['max_yield']) and pd.notna(match['min_yield']):
-                            st.markdown(f"**Range next 12 months:** {match['min_yield']:.2f}% - {match['max_yield']:.2f}%")
+            # Color based on similarity score
+            sim = match['similarity']
+            if sim >= 80:
+                border_color = '#ff4d4d'
+                bg_color = '#ff4d4d20'
+            elif sim >= 70:
+                border_color = '#ff9933'
+                bg_color = '#ff993320'
+            elif sim >= 60:
+                border_color = '#FFD700'
+                bg_color = '#FFD70020'
             else:
-                st.info("No close historical matches found for current yield level in selected era.")
-        else:
-            st.warning("No recent DGS10 data available for historical matching")
+                border_color = '#4169E1'
+                bg_color = '#4169E120'
+            
+            with st.expander(f"Match #{i}: {match['date'].strftime('%B %Y')} (Similarity: {sim:.0f}% - {match['factors_used']*100:.0f}% factors matched)", expanded=(i==1)):
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown("**Then vs Now**")
+                    st.markdown(f"• Spread: {format_value(match_spread, 2)}% (Now: {format_value(spread_val, 2)}%)")
+                    st.markdown(f"• Oil: {format_value(match_oil, 2, '$')} (Now: {format_value(oil_val, 2, '$')})")
+                    st.markdown(f"• VIX: {format_value(match_vix, 1)} (Now: {format_value(vix_val, 1)})")
+                    st.markdown(f"• Credit: {format_value(match_hy, 2)}% (Now: {format_value(hy_val, 2)}%)")
+                
+                with col2:
+                    st.markdown(f"• Sentiment: {format_value(match_sent, 1)} (Now: {format_value(sent_val, 1)})")
+                    st.markdown(f"• Unemployment: {format_value(match_unrate, 1)}% (Now: {format_value(unrate_val, 1)}%)")
+                    st.markdown(f"• Inflation: {format_value(match_cpi, 1)}% (Now: {format_value(cpi_val, 1)}%)")
+                    
+                    outcome = "🔴 LED TO CRISIS" if led_to_crisis else "🟢 NO CRISIS"
+                    st.markdown(f"**Outcome:** {outcome}")
+                
+                # Look ahead 12 months
+                date_idx = df[df['date'] == match['date']].index[0]
+                future_12m_idx = min(date_idx + 264, len(df) - 1)
+                
+                if future_12m_idx > date_idx:
+                    future_yield = df.iloc[future_12m_idx]['DGS10'] if 'DGS10' in df.columns else None
+                    if future_yield is not None and pd.notna(match_row.get('DGS10')):
+                        change = future_yield - match_row['DGS10']
+                        direction = "▲" if change > 0 else "▼"
+                        st.markdown(f"**12 months later:** 10Y Yield {direction} {abs(change):.2f}% to {future_yield:.2f}%")
     else:
-        st.warning("DGS10 data not available for historical matching")
+        st.info("No close multi-factor historical matches found.")
+    
+    st.markdown("---")
+    
+    # Keep the original yield-only matches as a secondary option
+    with st.expander("📊 View Traditional Yield-Only Matches"):
+        st.info("These matches are based on yield levels ONLY, not the full multi-factor profile.")
+        
+        if 'DGS10' in df.columns:
+            latest_yield = df[df['DGS10'].notna()].iloc[-1]['DGS10'] if not df[df['DGS10'].notna()].empty else None
+            latest_date = df[df['DGS10'].notna()].iloc[-1]['date'] if not df[df['DGS10'].notna()].empty else None
+            
+            if latest_yield is not None:
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    era = st.radio(
+                        "Focus on:", 
+                        ["All History", "Pre-2000", "Post-2000"], 
+                        horizontal=True,
+                        key="yield_matches_era"
+                    )
+                
+                yield_matches = find_historical_matches(df, latest_yield, latest_date, n=5, era=era)
+                
+                if not yield_matches.empty:
+                    for i, (_, match) in enumerate(yield_matches.iterrows(), 1):
+                        st.markdown(f"""
+                        **Match #{i}: {match['date'].strftime('%B %Y')}** (Yield: {match['DGS10']:.2f}%, Similarity: {match['similarity']:.0f}%)
+                        - {'🔴 LED TO CRISIS' if match['led_to_crisis'] else '🟢 NO CRISIS'}
+                        """)
+                else:
+                    st.info("No yield matches found.")
 
 # ============================================================================
 # TAB 4: DATA SHOP (WITH EMAIL CAPTURE AND ATTRIBUTION)
@@ -2998,6 +3674,113 @@ with tab6:
         view_mode=st.session_state.vault_view_mode,
         fullscreen_id=st.session_state.fullscreen_chart_id
     )
+
+# ============================================================================
+# TAB 7: DATA FRESHNESS (NEW - FROM APP2.PY)
+# ============================================================================
+
+with tab7:
+    st.markdown('<div class="sub-header">📅 Data Freshness Dashboard</div>', unsafe_allow_html=True)
+    
+    st.markdown("""
+    <div style="background: rgba(255,215,0,0.1); padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+        <p style="color: white; margin: 0;">
+            <span style="color: #FFD700;">ℹ️ About this dashboard:</span> Different indicators update at different frequencies.
+            We check every source daily, but some data (like GDP) is only released quarterly.
+            This dashboard shows you exactly how fresh each indicator is.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    freshness_df, freq_counts = create_freshness_dashboard(df)
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        daily_count = freq_counts.get('Daily', 0)
+        st.markdown(f"""
+        <div style="background: #1a1a1a; padding: 15px; border-radius: 8px; text-align: center; border-left: 4px solid #00ff00;">
+            <div style="color: #00ff00; font-size: 2rem;">{daily_count}</div>
+            <div style="color: #888;">Daily Indicators</div>
+            <div style="color: #00ff00; font-size: 0.8rem;">🟢 Updates next day</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        weekly_count = freq_counts.get('Weekly', 0)
+        st.markdown(f"""
+        <div style="background: #1a1a1a; padding: 15px; border-radius: 8px; text-align: center; border-left: 4px solid #FFD700;">
+            <div style="color: #FFD700; font-size: 2rem;">{weekly_count}</div>
+            <div style="color: #888;">Weekly Indicators</div>
+            <div style="color: #FFD700; font-size: 0.8rem;">🟡 Updates Thursdays</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        monthly_count = freq_counts.get('Monthly', 0)
+        st.markdown(f"""
+        <div style="background: #1a1a1a; padding: 15px; border-radius: 8px; text-align: center; border-left: 4px solid #ff9900;">
+            <div style="color: #ff9900; font-size: 2rem;">{monthly_count}</div>
+            <div style="color: #888;">Monthly Indicators</div>
+            <div style="color: #ff9900; font-size: 0.8rem;">🟠 Varies by release</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col4:
+        quarterly_count = freq_counts.get('Quarterly', 0)
+        st.markdown(f"""
+        <div style="background: #1a1a1a; padding: 15px; border-radius: 8px; text-align: center; border-left: 4px solid #4169E1;">
+            <div style="color: #4169E1; font-size: 2rem;">{quarterly_count}</div>
+            <div style="color: #888;">Quarterly Indicators</div>
+            <div style="color: #4169E1; font-size: 0.8rem;">🔵 Every 3 months</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    st.markdown("### 📋 Detailed Freshness by Indicator")
+    
+    sort_by = st.radio(
+        "Sort by:",
+        ["Days Old (newest first)", "Days Old (oldest first)", "Indicator Name", "Frequency"],
+        horizontal=True
+    )
+    
+    if sort_by == "Days Old (newest first)":
+        freshness_df = freshness_df.sort_values('Days Old', ascending=True)
+    elif sort_by == "Days Old (oldest first)":
+        freshness_df = freshness_df.sort_values('Days Old', ascending=False)
+    elif sort_by == "Indicator Name":
+        freshness_df = freshness_df.sort_values('Indicator')
+    elif sort_by == "Frequency":
+        freshness_df = freshness_df.sort_values('Frequency')
+    
+    st.dataframe(
+        freshness_df[['Indicator', 'Last Update', 'Days Old', 'Frequency']],
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            'Days Old': st.column_config.NumberColumn(
+                'Days Old',
+                help="Days since last update",
+                format="%d days"
+            )
+        }
+    )
+    
+    st.markdown("---")
+    
+    with st.expander("📅 When Do Indicators Typically Update?"):
+        st.markdown("""
+        | Frequency | Typical Release Schedule |
+        |-----------|-------------------------|
+        | **Daily** | Treasury yields: 6pm ET daily<br>VIX, Markets: Throughout trading day<br>Oil: Daily settlement |
+        | **Weekly** | Jobless Claims: Every Thursday at 8:30am ET |
+        | **Monthly** | Unemployment: First Friday<br>CPI: Second week<br>Retail Sales: Mid-month<br>Housing Starts: Mid-month |
+        | **Quarterly** | GDP Advance: Late January, April, July, October<br>GDP Preliminary: One month later<br>GDP Final: One month after that |
+        
+        We check every source daily and update the dataset as soon as new data becomes available.
+        """)
 
 # ============================================================================
 # COMPLIANCE FOOTER (Added to every page)
