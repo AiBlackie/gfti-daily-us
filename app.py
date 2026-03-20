@@ -295,7 +295,7 @@ st.markdown("""
 # CONSTANTS
 # ============================================================================
 
-WAR_START_DATE = "2026-02-28"  # Iran-USA war start date (corrected from Feb 23 to Feb 28)
+WAR_START_DATE = "2026-02-28"  # Iran-USA war start date
 
 # ============================================================================
 # FREQUENCY CONSTANTS (NEW - FROM APP2.PY)
@@ -309,7 +309,7 @@ FREQUENCIES = {
 }
 
 # ============================================================================
-# CRISIS THRESHOLDS (NEW - REALISTIC VALUES)
+# CRISIS THRESHOLDS (REALISTIC VALUES)
 # ============================================================================
 
 THRESHOLDS = {
@@ -325,18 +325,19 @@ THRESHOLDS = {
 }
 
 # ============================================================================
-# FACTOR WEIGHTS FOR MULTI-FACTOR RECESSION PROBABILITY (REALISTIC)
+# REALISTIC FACTOR WEIGHTS FOR MULTI-FACTOR RECESSION PROBABILITY
 # ============================================================================
 
 FACTOR_WEIGHTS = {
-    'war': 0.18,              # Current active war - significant impact
-    'yield_curve': 0.16,      # Yield curve inversion - historically reliable
-    'oil': 0.14,               # Oil shocks - major recession trigger
-    'vix': 0.12,               # Market fear - immediate sentiment
-    'credit': 0.11,            # Credit spreads - corporate distress
-    'sentiment': 0.10,         # Consumer confidence - spending impact
-    'unemployment': 0.10,      # Labor market - lagging but critical
-    'inflation': 0.09          # Inflation - Fed response driver
+    'yield_curve': 0.25,      # Most reliable leading indicator (12-18 month lead)
+    'credit': 0.15,           # Corporate stress indicator
+    'vix': 0.12,              # Market fear - immediate sentiment
+    'war': 0.10,              # Reduced from 18% - wars don't always cause recessions
+    'sentiment': 0.10,        # Consumer confidence - forward-looking
+    'oil': 0.10,              # Energy shocks - can trigger recessions
+    'monetary': 0.08,         # Fed policy stance - real rates matter
+    'unemployment': 0.05,     # Lagging indicator - less predictive
+    'inflation': 0.05         # Lagging indicator - less predictive
 }
 
 # ============================================================================
@@ -860,121 +861,173 @@ def format_change(current, prev, decimals=2, is_percent=True):
     return f"{emoji} {abs(diff):.{decimals}f}{unit}", color, emoji
 
 # ============================================================================
-# REPLACED: Simple get_recession_probability with MULTI-FACTOR VERSION
+# REALISTIC MULTI-FACTOR RECESSION PROBABILITY FUNCTIONS
 # ============================================================================
 
-def get_factor_probability(value, factor_type):
-    """
-    Convert a raw value to a probability (0-100) based on factor type and thresholds
-    Always returns a number between 0-100, never None
-    """
-    if factor_type == 'war':
-        # War factor: based on days since war started
-        war_start = pd.to_datetime(WAR_START_DATE)
-        days_since = (datetime.now() - war_start).days
-        if days_since < 0:
-            return 15  # War hasn't started yet
-        elif days_since < 30:
-            return 60 + (days_since * 0.5)  # Escalating
-        elif days_since < 90:
-            return 75 + ((days_since - 30) * 0.1)  # Sustained
-        else:
-            return 85  # Protracted conflict
+def get_yield_probability(spread):
+    """Realistic yield curve probability - historically 12-18 month lead"""
+    if spread is None or pd.isna(spread):
+        return 15
     
-    # For all other factors, check if value is None or NaN
-    if pd.isna(value) or value is None:
-        return 15  # Default low probability when data missing
-    
-    if factor_type == 'yield_curve':
-        if value < -0.5:
-            return 85
-        elif value < 0:
-            return 70
-        elif value < 0.2:
-            return 50
-        elif value < 0.5:
-            return 30
-        else:
-            return 15
-    
-    elif factor_type == 'oil':
-        if value > 100:
-            return 90
-        elif value > 90:
-            return 80
-        elif value > 80:
-            return 65
-        elif value > 70:
-            return 45
-        elif value > 60:
-            return 25
-        else:
-            return 15
-    
-    elif factor_type == 'vix':
-        if value > 40:
-            return 95
-        elif value > 30:
-            return 75
-        elif value > 25:
-            return 55
-        elif value > 20:
-            return 35
-        else:
-            return 15
-    
-    elif factor_type == 'credit':
-        if value > 6:
-            return 90
-        elif value > 5:
-            return 75
-        elif value > 4:
-            return 55
-        elif value > 3:
-            return 35
-        else:
-            return 15
-    
-    elif factor_type == 'sentiment':
-        if value < 50:
-            return 85
-        elif value < 60:
-            return 65
-        elif value < 70:
-            return 45
-        elif value < 80:
-            return 25
-        else:
-            return 15
-    
-    elif factor_type == 'unemployment':
-        if value > 8:
-            return 90
-        elif value > 6:
-            return 70
-        elif value > 5:
-            return 45
-        else:
-            return 20
-    
-    elif factor_type == 'inflation':
-        if value > 6:
-            return 80
-        elif value > 4:
-            return 60
-        elif value > 3:
-            return 40
-        elif value > 2:
-            return 20
-        else:
-            return 15
-    
+    # 1960-2024: 8 recessions, 10 inversions (80% predictive)
+    if spread < -0.5:
+        return 75  # Deep inversion - high probability
+    elif spread < 0:
+        return 60  # Mild inversion - elevated
+    elif spread < 0.2:
+        return 35  # Flattening - watch
+    elif spread < 0.5:
+        return 20  # Normal
     else:
+        return 10  # Steep - growth
+
+def get_credit_probability(spread):
+    """Credit spread probability - corporate distress"""
+    if spread is None or pd.isna(spread):
+        return 15
+    
+    if spread > 8:
+        return 85  # Crisis levels (2008)
+    elif spread > 6:
+        return 70
+    elif spread > 5:
+        return 55
+    elif spread > 4:
+        return 40
+    elif spread > 3:
+        return 25
+    else:
+        return 10
+
+def get_vix_probability(vix):
+    """VIX - immediate fear, moderate predictor"""
+    if vix is None or pd.isna(vix):
+        return 15
+    
+    if vix > 40:
+        return 70
+    elif vix > 35:
+        return 60
+    elif vix > 30:
         return 50
+    elif vix > 25:
+        return 35
+    elif vix > 20:
+        return 25
+    else:
+        return 15
+
+def get_war_probability():
+    """Realistic war probability - based on historical patterns"""
+    war_start = pd.to_datetime(WAR_START_DATE)
+    days_since = (datetime.now() - war_start).days
+    
+    if days_since < 0:
+        return 10  # Pre-war baseline
+    
+    # Historical wars and outcomes:
+    # - Gulf War (1990-91): Mild recession (3/10 impact)
+    # - Iraq War (2003): No recession
+    # - Ukraine (2022): No recession (energy shock only)
+    # - Iran conflict: High oil risk, but unclear recession outcome
+    
+    if days_since < 30:
+        return 25  # Early uncertainty
+    elif days_since < 90:
+        return 30  # Moderate impact
+    elif days_since < 180:
+        return 35  # Sustained, but not necessarily recession
+    else:
+        return 40  # Protracted conflict - elevated but not certain
+
+def get_sentiment_probability(sent):
+    """Consumer sentiment - forward-looking"""
+    if sent is None or pd.isna(sent):
+        return 15
+    
+    if sent < 50:
+        return 65  # Panic levels
+    elif sent < 60:
+        return 50
+    elif sent < 70:
+        return 35
+    elif sent < 80:
+        return 20
+    else:
+        return 10
+
+def get_oil_probability(oil):
+    """Oil shock probability - energy-driven recessions"""
+    if oil is None or pd.isna(oil):
+        return 15
+    
+    # Historical oil shocks: 1973, 1979, 1990, 2008, 2022
+    if oil > 120:
+        return 75
+    elif oil > 100:
+        return 60
+    elif oil > 90:
+        return 45
+    elif oil > 80:
+        return 35
+    elif oil > 70:
+        return 25
+    else:
+        return 15
+
+def get_monetary_probability(fed_funds, cpi):
+    """Monetary policy stance - real rate calculation"""
+    if fed_funds is None or cpi is None or pd.isna(fed_funds) or pd.isna(cpi):
+        return 15
+    
+    real_rate = fed_funds - cpi
+    
+    if real_rate > 3:
+        return 60  # Highly restrictive
+    elif real_rate > 2:
+        return 45
+    elif real_rate > 1:
+        return 30
+    elif real_rate > 0:
+        return 20
+    else:
+        return 10  # Accommodative
+
+def get_unrate_probability(unrate):
+    """Unemployment probability - lagging indicator"""
+    if unrate is None or pd.isna(unrate):
+        return 15
+    
+    if unrate > 8:
+        return 75
+    elif unrate > 7:
+        return 60
+    elif unrate > 6:
+        return 45
+    elif unrate > 5:
+        return 30
+    else:
+        return 15
+
+def get_inflation_probability(cpi):
+    """Inflation probability - Fed response"""
+    if cpi is None or pd.isna(cpi):
+        return 15
+    
+    if cpi > 8:
+        return 70
+    elif cpi > 6:
+        return 55
+    elif cpi > 4:
+        return 40
+    elif cpi > 3:
+        return 30
+    else:
+        return 15
 
 def calculate_multi_factor_probability(df, include_war=True):
     """
-    Calculate recession probability using multiple factors with realistic weights
+    Calculate recession probability using realistic weights and non-linear scoring
     """
     # Get current values
     spread_val, _ = get_latest_value(df, '10Y2Y')
@@ -984,87 +1037,97 @@ def calculate_multi_factor_probability(df, include_war=True):
     sent_val, _ = get_latest_value(df, 'UMCSENT')
     unrate_val, _ = get_latest_value(df, 'UNRATE')
     cpi_val, _ = get_latest_value(df, 'CPI_YOY')
+    fed_val, _ = get_latest_value(df, 'FEDFUNDS')
     
     # Build list of available factors with their probabilities and weights
     factors = []
     
-    # War factor
-    if include_war:
-        war_prob = get_factor_probability(None, 'war')
-        # war_prob is always a number from get_factor_probability
-        factors.append({
-            'name': 'War/Geopolitical',
-            'prob': war_prob,
-            'weight': FACTOR_WEIGHTS['war'],
-            'status': 'ACTIVE' if war_prob > 50 else 'INACTIVE'
-        })
-    
-    # Yield curve
+    # Yield curve (leading indicator - highest weight)
     if spread_val is not None:
-        spread_prob = get_factor_probability(spread_val, 'yield_curve')
+        prob = get_yield_probability(spread_val)
         factors.append({
             'name': 'Yield Curve',
-            'prob': spread_prob,
+            'prob': prob,
             'weight': FACTOR_WEIGHTS['yield_curve'],
-            'status': 'INVERTED' if spread_val < 0 else 'NORMAL'
-        })
-    
-    # Oil
-    if oil_val is not None:
-        oil_prob = get_factor_probability(oil_val, 'oil')
-        factors.append({
-            'name': 'Oil Prices',
-            'prob': oil_prob,
-            'weight': FACTOR_WEIGHTS['oil'],
-            'status': 'HIGH' if oil_val > 80 else 'NORMAL'
-        })
-    
-    # VIX
-    if vix_val is not None:
-        vix_prob = get_factor_probability(vix_val, 'vix')
-        factors.append({
-            'name': 'Market Fear (VIX)',
-            'prob': vix_prob,
-            'weight': FACTOR_WEIGHTS['vix'],
-            'status': 'PANIC' if vix_val > 30 else 'FEAR' if vix_val > 25 else 'NORMAL'
+            'status': 'INVERTED' if spread_val < 0 else 'FLATTENING' if spread_val < 0.5 else 'NORMAL'
         })
     
     # Credit spreads
     if hy_val is not None:
-        hy_prob = get_factor_probability(hy_val, 'credit')
+        prob = get_credit_probability(hy_val)
         factors.append({
             'name': 'Credit Spreads',
-            'prob': hy_prob,
+            'prob': prob,
             'weight': FACTOR_WEIGHTS['credit'],
             'status': 'CRUNCH' if hy_val > 5 else 'STRESS' if hy_val > 4 else 'NORMAL'
         })
     
+    # VIX
+    if vix_val is not None:
+        prob = get_vix_probability(vix_val)
+        factors.append({
+            'name': 'Market Fear',
+            'prob': prob,
+            'weight': FACTOR_WEIGHTS['vix'],
+            'status': 'PANIC' if vix_val > 30 else 'FEAR' if vix_val > 25 else 'NORMAL'
+        })
+    
+    # War factor (reduced weight)
+    if include_war:
+        prob = get_war_probability()
+        factors.append({
+            'name': 'Geopolitical',
+            'prob': prob,
+            'weight': FACTOR_WEIGHTS['war'],
+            'status': 'ACTIVE' if prob > 30 else 'ELEVATED' if prob > 20 else 'LOW'
+        })
+    
     # Consumer sentiment
     if sent_val is not None:
-        sent_prob = get_factor_probability(sent_val, 'sentiment')
+        prob = get_sentiment_probability(sent_val)
         factors.append({
             'name': 'Consumer Sentiment',
-            'prob': sent_prob,
+            'prob': prob,
             'weight': FACTOR_WEIGHTS['sentiment'],
             'status': 'PANIC' if sent_val < 50 else 'WEAK' if sent_val < 60 else 'NORMAL'
         })
     
-    # Unemployment
+    # Oil prices
+    if oil_val is not None:
+        prob = get_oil_probability(oil_val)
+        factors.append({
+            'name': 'Oil Prices',
+            'prob': prob,
+            'weight': FACTOR_WEIGHTS['oil'],
+            'status': 'SHOCK' if oil_val > 90 else 'ELEVATED' if oil_val > 80 else 'NORMAL'
+        })
+    
+    # Monetary policy
+    if fed_val is not None and cpi_val is not None:
+        prob = get_monetary_probability(fed_val, cpi_val)
+        factors.append({
+            'name': 'Monetary Policy',
+            'prob': prob,
+            'weight': FACTOR_WEIGHTS['monetary'],
+            'status': 'RESTRICTIVE' if prob > 40 else 'NEUTRAL' if prob > 20 else 'ACCOMMODATIVE'
+        })
+    
+    # Unemployment (lagging - reduced weight)
     if unrate_val is not None:
-        unrate_prob = get_factor_probability(unrate_val, 'unemployment')
+        prob = get_unrate_probability(unrate_val)
         factors.append({
             'name': 'Unemployment',
-            'prob': unrate_prob,
+            'prob': prob,
             'weight': FACTOR_WEIGHTS['unemployment'],
             'status': 'HIGH' if unrate_val > 5 else 'NORMAL'
         })
     
-    # Inflation
+    # Inflation (lagging - reduced weight)
     if cpi_val is not None:
-        cpi_prob = get_factor_probability(cpi_val, 'inflation')
+        prob = get_inflation_probability(cpi_val)
         factors.append({
             'name': 'Inflation',
-            'prob': cpi_prob,
+            'prob': prob,
             'weight': FACTOR_WEIGHTS['inflation'],
             'status': 'HIGH' if cpi_val > 3 else 'NORMAL'
         })
@@ -1075,6 +1138,9 @@ def calculate_multi_factor_probability(df, include_war=True):
         return None, []
     
     weighted_prob = sum(f['prob'] * f['weight'] for f in factors) / total_weight
+    
+    # Cap probability at 90% (no such thing as 100% certainty)
+    weighted_prob = min(weighted_prob, 90)
     
     return weighted_prob, factors
 
@@ -1137,9 +1203,9 @@ def display_multi_factor_probability(df):
                 <div style="color: #ccc; margin-top: 10px;">{description}</div>
             </div>
             <div style="text-align: right;">
-                <div style="color: #FFD700;">⚠️ 8-Factor Model</div>
+                <div style="color: #FFD700;">⚠️ 9-Factor Model</div>
                 <div style="color: #888; font-size: 0.8rem;">Using {len(factors)} factors with dynamic weights</div>
-                <div style="color: #888; font-size: 0.8rem;">Includes active war factor</div>
+                <div style="color: #888; font-size: 0.8rem;">Includes realistic war factor (10% weight)</div>
             </div>
         </div>
     </div>
@@ -1148,10 +1214,10 @@ def display_multi_factor_probability(df):
     # Factor breakdown in columns
     st.markdown("### 🔍 Factor Breakdown")
     
-    # Create columns for the grid (4 per row)
-    cols = st.columns(4)
+    # Create columns for the grid (3 per row for better display)
+    cols = st.columns(3)
     for i, factor in enumerate(factors):
-        with cols[i % 4]:
+        with cols[i % 3]:
             if factor['prob'] >= 80:
                 f_color = '#ff4d4d'
             elif factor['prob'] >= 60:
@@ -1162,7 +1228,7 @@ def display_multi_factor_probability(df):
                 f_color = '#00ff00'
             
             st.markdown(f"""
-            <div style="background: #1a1a1a; padding: 10px; border-radius: 8px; margin: 5px; border-left: 3px solid {f_color};">
+            <div style="background: #1a1a1a; padding: 12px; border-radius: 8px; margin: 5px; border-left: 3px solid {f_color};">
                 <div style="color: #888; font-size: 0.7rem;">{factor['name']}</div>
                 <div style="font-size: 1.5rem; color: white;">{factor['prob']:.0f}%</div>
                 <div style="color: {f_color}; font-size: 0.6rem;">{factor['status']}</div>
@@ -2208,45 +2274,6 @@ with st.sidebar:
             - RISK_APPETITE (risk differential)
             """)
         
-        # Calculate counts by category
-        treasury_count = 10
-        fed_count = 5
-        labor_count = 10  # 7 labor + 3 claims
-        growth_count = 4   # 3 growth + 1 sentiment
-        housing_count = 3
-        market_count = 5   # 2 fear + 2 oil/dollar + 1 HY spread
-        money_count = 3    # M2SL, TNWBSHNO, BAMLH0A0HYM2
-        inflation_count = 7  # 5 price + 2 expectations
-        
-        st.markdown(f"""
-        **Categories:**
-        
-        **💰 Rates & Fed** ({treasury_count + fed_count})
-        - Complete yield curve
-        - Fed policy & balance sheet
-        
-        **👥 Labor Market** ({labor_count})
-        - Unemployment, JOLTS, claims
-        - Hours worked, temp help
-        
-        **📈 Inflation** ({inflation_count})
-        - CPI, PCE, expectations
-        
-        **📊 Growth** ({growth_count})
-        - GDP, IP, retail sales
-        - Consumer sentiment
-        
-        **🏠 Housing** ({housing_count})
-        - Starts, permits, homeownership
-        
-        **📉 Market Fear** ({market_count})
-        - VIX, financial stress
-        - Oil, dollar, credit spreads
-        
-        **💰 Money & Credit** ({money_count})
-        - M2, net worth, reserves
-        """)
-        
         st.markdown("---")
         
         # Quick stats
@@ -2522,38 +2549,9 @@ with tab1:
     
     with col2:
         # =========================================
-        # REPLACED: Simple probability with MULTI-FACTOR PROBABILITY
+        # DISPLAY REALISTIC MULTI-FACTOR PROBABILITY
         # =========================================
-        prob, _ = calculate_multi_factor_probability(df)
-        if prob:
-            # Determine color based on probability
-            if prob >= 80:
-                color = "#ff4d4d"
-                label = "CRITICAL"
-            elif prob >= 60:
-                color = "#ff9933"
-                label = "HIGH"
-            elif prob >= 40:
-                color = "#FFD700"
-                label = "ELEVATED"
-            elif prob >= 20:
-                color = "#4169E1"
-                label = "MODERATE"
-            else:
-                color = "#00ff00"
-                label = "LOW"
-            
-            st.markdown(f"""
-            <div style="background: {color}20; padding: 20px; border-radius: 10px; border-left: 4px solid {color};">
-                <div style="text-align: center;">
-                    <div style="color: #888;">MULTI-FACTOR</div>
-                    <div style="color: #888; font-size: 0.8rem;">RECESSION PROBABILITY</div>
-                    <div style="font-size: 48px; font-weight: bold; color: {color};">{prob:.0f}%</div>
-                    <div style="color: {color};">{label}</div>
-                    <div style="color: #888; font-size: 0.8rem;">Next 12 months (8 factors)</div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
+        display_multi_factor_probability(df)
     
     # =========================================
     # KEY METRICS BY CATEGORY
