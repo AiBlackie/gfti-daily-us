@@ -1,4 +1,4 @@
-# visual_vault.py - Complete version with all fixes
+# visual_vault.py - Complete version with corrected Vulnerability Index calculation
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
@@ -37,7 +37,7 @@ The VIX is just ONE of FOUR components that make up your proprietary index.
 """
 
 # ============================================================================
-# CONFIGURATION - REPLACE THE EXISTING COLORS DICTIONARY WITH THIS
+# CONFIGURATION - UNIFIED COLOR SCHEME
 # ============================================================================
 
 # Unified color scheme for both light and dark modes
@@ -91,7 +91,6 @@ COLORS = {
 }
 
 
-
 CHART_METADATA = [
     {'id': 1, 'title': 'The American Yield', 'description': '64 years of boom, bust, and everything in between', 'icon': '📜'},
     {'id': 2, 'title': 'The Vulnerability Index', 'description': 'Your proprietary crisis warning system', 'icon': '🔴'},
@@ -108,7 +107,7 @@ CHART_METADATA = [
 ]
 
 # ============================================================================
-# SAFE DATE HANDLING FUNCTION - FIXED FOR NaT
+# SAFE DATE HANDLING FUNCTION
 # ============================================================================
 
 def safe_strftime(date_obj, format_string):
@@ -142,59 +141,77 @@ def safe_strftime(date_obj, format_string):
             return "Unknown"
     
     return str(date_obj)
+
 # ============================================================================
-# UTILITY FUNCTIONS
+# NORMALIZATION FUNCTIONS - MATCHING APP4.PY
 # ============================================================================
 
 def normalize_curve_stress(spread):
+    """Normalize yield curve spread to 0-100 stress scale"""
     if pd.isna(spread):
         return np.nan
+    # When spread is negative (inverted), stress is high
+    # Normalize: spread from -1.5% to +0.5% maps to 100 to 0
     stress = ((spread * -1) + 0.5) * 66.7
     return max(0, min(100, stress))
 
 def normalize_credit_stress(spread):
+    """Normalize credit spread to 0-100 stress scale"""
     if pd.isna(spread):
         return np.nan
+    # HY spread typically ranges from 2% (calm) to 8% (crisis)
+    # Normalize: 2% = 0 stress, 8% = 100 stress
     stress = (spread - 2) / 6 * 100
     return max(0, min(100, stress))
 
 def normalize_vix_stress(vix):
+    """Normalize VIX to 0-100 stress scale"""
     if pd.isna(vix):
         return np.nan
+    # VIX typically ranges from 10 (calm) to 35+ (panic)
+    # Normalize: 15 = 0 stress, 40 = 100 stress
     stress = (vix - 15) / 25 * 100
     return max(0, min(100, stress))
 
 def normalize_systemic_stress(stlfsi):
+    """Normalize financial stress index to 0-100 stress scale"""
     if pd.isna(stlfsi):
         return np.nan
-    stress = stlfsi / 2 * 100
+    # STLFSI4 typically ranges from -2 to +2
+    # Normalize: -2 = 0 stress, +2 = 100 stress
+    stress = (stlfsi + 2) / 4 * 100
     return max(0, min(100, stress))
 
 def normalize_labor_stress(unrate):
+    """Normalize unemployment to 0-100 stress scale"""
     if pd.isna(unrate):
         return np.nan
     stress = (unrate - 3) / 7 * 100
     return max(0, min(100, stress))
 
 def normalize_inflation_stress(cpi):
+    """Normalize inflation to 0-100 stress scale"""
     if pd.isna(cpi):
         return np.nan
     stress = (cpi - 2) / 6 * 100
     return max(0, min(100, stress))
 
 def normalize_housing_stress(starts):
+    """Normalize housing starts to 0-100 stress scale"""
     if pd.isna(starts):
         return np.nan
     stress = (2000 - starts) / 1500 * 100
     return max(0, min(100, stress))
 
 def normalize_dollar_stress(dollar):
+    """Normalize dollar index to 0-100 stress scale"""
     if pd.isna(dollar):
         return np.nan
     stress = (dollar - 90) / 40 * 100
     return max(0, min(100, stress))
 
 def normalize_sentiment_stress(sentiment):
+    """Normalize consumer sentiment to 0-100 stress scale"""
     if pd.isna(sentiment):
         return np.nan
     stress = (100 - sentiment) / 60 * 100
@@ -202,15 +219,15 @@ def normalize_sentiment_stress(sentiment):
 
 def calculate_vulnerability_index(df):
     """
-    Calculate the composite Vulnerability Index™
+    Calculate the composite Vulnerability Index™ - CORRECT VERSION matching app4.py
     
     ⚠️ NOTE: This is NOT the VIX! The VIX is only ONE component.
     
     The Vulnerability Index™ combines:
-    - CURVE_STRESS: Yield curve inversion (10Y2Y) - signals recession risk
-    - CREDIT_STRESS: High yield spreads - corporate borrowing stress
-    - VIX_STRESS: Market fear/volatility - stock market panic
-    - SYSTEM_STRESS: Financial conditions index - broad market stress
+    - CURVE_STRESS: Yield curve inversion (10Y2Y) - signals recession risk (30% weight)
+    - CREDIT_STRESS: High yield spreads - corporate borrowing stress (25% weight)
+    - VIX_STRESS: Market fear/volatility - stock market panic (25% weight)
+    - SYSTEM_STRESS: Financial conditions index - broad market stress (20% weight)
     
     Range: 0-100
     - <40: LOW stress - Normal conditions
@@ -227,7 +244,7 @@ def calculate_vulnerability_index(df):
     df['VIX_STRESS'] = np.nan
     df['SYSTEM_STRESS'] = np.nan
     
-    # Calculate curve stress (10Y2Y) - most reliable
+    # Calculate curve stress (10Y2Y)
     if '10Y2Y' in df.columns:
         df['CURVE_STRESS'] = df['10Y2Y'].apply(normalize_curve_stress)
     
@@ -243,19 +260,50 @@ def calculate_vulnerability_index(df):
     if 'STLFSI4' in df.columns:
         df['SYSTEM_STRESS'] = df['STLFSI4'].apply(normalize_systemic_stress)
     
-    # Calculate composite - only where at least 2 components are available
-    stress_components = [df['CURVE_STRESS'], df['CREDIT_STRESS'], 
-                         df['VIX_STRESS'], df['SYSTEM_STRESS']]
+    # Calculate composite - weighted average with fallback logic
+    # Define weights (sum to 1.0)
+    weights = {
+        'CURVE_STRESS': 0.30,
+        'CREDIT_STRESS': 0.25,
+        'VIX_STRESS': 0.25,
+        'SYSTEM_STRESS': 0.20
+    }
     
-    # Count non-null components for each row
-    non_null_count = pd.concat(stress_components, axis=1).notna().sum(axis=1)
+    # Build list of available components with their weights
+    stress_components = []
+    component_weights = []
     
-    # Calculate mean of available components (minimum 2 components required)
-    df['VULNERABILITY_INDEX'] = np.where(
-        non_null_count >= 2,
-        pd.concat(stress_components, axis=1).mean(axis=1, skipna=True),
-        np.nan
-    )
+    for col, weight in weights.items():
+        if col in df.columns and df[col].notna().any():
+            stress_components.append(df[col])
+            component_weights.append(weight)
+    
+    if len(stress_components) >= 2:  # At least 2 components available
+        # Normalize weights to sum to 1.0 based on available components
+        total_weight = sum(component_weights)
+        normalized_weights = [w / total_weight for w in component_weights]
+        
+        # Calculate weighted average
+        weighted_sum = np.zeros(len(df))
+        for component, weight in zip(stress_components, normalized_weights):
+            weighted_sum += component.fillna(0) * weight
+        
+        # Only calculate where at least one component is non-null
+        valid_mask = pd.concat(stress_components, axis=1).notna().any(axis=1)
+        df['VULNERABILITY_INDEX'] = np.where(valid_mask, weighted_sum, np.nan)
+    else:
+        # Fallback: use VIX stress as proxy if only one component available
+        if 'VIX_STRESS' in df.columns and df['VIX_STRESS'].notna().any():
+            df['VULNERABILITY_INDEX'] = df['VIX_STRESS']
+        elif 'CURVE_STRESS' in df.columns and df['CURVE_STRESS'].notna().any():
+            df['VULNERABILITY_INDEX'] = df['CURVE_STRESS']
+        elif 'CREDIT_STRESS' in df.columns and df['CREDIT_STRESS'].notna().any():
+            df['VULNERABILITY_INDEX'] = df['CREDIT_STRESS']
+        elif 'SYSTEM_STRESS' in df.columns and df['SYSTEM_STRESS'].notna().any():
+            df['VULNERABILITY_INDEX'] = df['SYSTEM_STRESS']
+        else:
+            # Ultimate fallback: use a default moderate stress level
+            df['VULNERABILITY_INDEX'] = 50.0
     
     return df
 
@@ -271,11 +319,11 @@ def get_vulnerability_status(value):
         return "HIGH", COLORS['red']
 
 # ============================================================================
-# IMPROVED HISTORICAL MATCHES FUNCTION - SIMPLIFIED TO MATCH WORKING LOGIC
+# IMPROVED HISTORICAL MATCHES FUNCTION
 # ============================================================================
 
 def find_historical_matches(df, current_date=None):
-    """Find closest historical matches for era comparison - FIXED for NaT issues"""
+    """Find closest historical matches for era comparison"""
     
     # If current_date is NaT or None, find the last valid date in the dataframe
     if current_date is None or pd.isna(current_date):
@@ -283,35 +331,25 @@ def find_historical_matches(df, current_date=None):
         if not valid_dates.empty:
             current_date = valid_dates.iloc[-1]
         else:
-            # Ultimate fallback - use current date
             current_date = datetime.now()
-    
-    print(f"Using current_date: {current_date}")
     
     # Get current values - use the most recent non-null values
     current_yield = df[df['DGS10'].notna()].iloc[-1]['DGS10'] if not df[df['DGS10'].notna()].empty else None
     
     if current_yield is None:
-        print("ERROR: No valid DGS10 data found")
         return pd.DataFrame(), pd.DataFrame()
-    
-    print(f"current_yield: {current_yield}")
     
     # Create historical dataset (exclude last 30 days)
     mask = (df['date'] < current_date - pd.Timedelta(days=30)) & (df['DGS10'].notna())
     candidates = df[mask].copy()
     
     if len(candidates) == 0:
-        print("⚠️ No candidates found with 30-day exclusion, trying without exclusion...")
         # Try without the 30-day exclusion
         mask = df['DGS10'].notna()
         candidates = df[mask].copy()
         
         if len(candidates) == 0:
-            print("❌ Still no candidates found")
             return pd.DataFrame(), pd.DataFrame()
-    
-    print(f"✅ Found {len(candidates)} candidates")
     
     # Calculate yield difference (primary metric)
     candidates['yield_diff'] = abs(candidates['DGS10'] - current_yield)
@@ -328,37 +366,15 @@ def find_historical_matches(df, current_date=None):
     # Take top 20 unique months
     top_matches = unique_months.head(20).copy()
     
-    # Debug: print top matches
-    print(f"\n=== TOP 10 UNIQUE MONTHS BY YIELD (Current Yield: {current_yield:.2f}%) ===")
-    for i, (idx, row) in enumerate(top_matches.head(10).iterrows()):
-        print(f"  {i+1}. {row['date'].strftime('%Y-%m-%d')} - Yield: {row['DGS10']:.2f}% (diff: {row['yield_diff']:.2f}%)")
-    print("=====================================\n")
-    
     # Split into pre-2000 and post-2000
     pre_2000 = top_matches[top_matches['date'] < '2000-01-01']
     post_2000 = top_matches[top_matches['date'] >= '2000-01-01']
-    
-    # Debug prints
-    print(f"\n=== VISUAL VAULT MATCHES ===")
-    print(f"Total candidates: {len(candidates)}")
-    print(f"Unique months: {len(unique_months)}")
-    print(f"Pre-2000 matches found: {len(pre_2000)}")
-    print(f"Post-2000 matches found: {len(post_2000)}")
-    
-    if not pre_2000.empty:
-        best_pre = pre_2000.iloc[0]
-        print(f"Best pre-2000 match: {best_pre['date'].strftime('%Y-%m-%d')} (yield: {best_pre['DGS10']:.2f}%)")
-    if not post_2000.empty:
-        best_post = post_2000.iloc[0]
-        print(f"Best post-2000 match: {best_post['date'].strftime('%Y-%m-%d')} (yield: {best_post['DGS10']:.2f}%)")
-    print("=============================\n")
     
     # Get best matches (closest to current yield)
     pre_match = pre_2000.head(1) if not pre_2000.empty else pd.DataFrame()
     post_match = post_2000.head(1) if not post_2000.empty else pd.DataFrame()
     
     return pre_match, post_match
-
 
 # ============================================================================
 # HELPER FUNCTION TO GET LATEST NON-NULL VALUE
@@ -415,40 +431,8 @@ def determine_color(column, value):
     else:
         return COLORS['gold']
 
-# ============================================================================
-# ANIMATION HELPERS
-# ============================================================================
-
-def create_animation_buttons():
-    """Create play/pause buttons for animations"""
-    return [dict(
-        type="buttons",
-        buttons=[dict(
-            label="▶️ Play",
-            method="animate",
-            args=[None, {"frame": {"duration": 200, "redraw": True}, "fromcurrent": True}]
-        ), dict(
-            label="⏸️ Pause",
-            method="animate",
-            args=[[None], {"frame": {"duration": 0, "redraw": False}, "mode": "immediate"}]
-        )],
-        direction="left",
-        pad={"r": 10, "t": 10},
-        showactive=False,
-        x=0.1,
-        y=0,
-        xanchor="right",
-        yanchor="top"
-    )]
-
-# ============================================================================
-# HELPER FUNCTIONS FOR VULNERABILITY CLOCK
-# ============================================================================
-
 def get_value_with_fallback(df, column, target_date):
-    """
-    Get value for a specific date, falling back to most recent non-null value
-    """
+    """Get value for a specific date, falling back to most recent non-null value"""
     if column not in df.columns:
         return None
     
@@ -489,14 +473,11 @@ def normalize_by_column(column, value):
         return 50
 
 # ============================================================================
-# CHART 1: THE AMERICAN YIELD - MINARD-INSPIRED ERA VISUALIZATION
+# CHART 1: THE AMERICAN YIELD
 # ============================================================================
 
 def create_american_yield_eras(df):
-    """
-    Chart 1: The American Yield - 64 Years of Boom, Bust, and Everything in Between
-    Inspired by Minard's Napoleon map - showing multiple dimensions in one view
-    """
+    """Chart 1: The American Yield - 64 Years of Boom, Bust, and Everything in Between"""
     
     # Define eras with their characteristics
     eras = [
@@ -510,7 +491,7 @@ def create_american_yield_eras(df):
             'inflation': 'Low (1-2%)',
             'recessions': '2 (1960, 1969)',
             'market': 'Mixed',
-            'color': '#87CEEB',  # Sky blue
+            'color': '#87CEEB',
             'story': 'Post-war prosperity, but inflation begins to stir'
         },
         {
@@ -523,7 +504,7 @@ def create_american_yield_eras(df):
             'inflation': 'HIGH (6-14%)',
             'recessions': '2 (1973, 1979)',
             'market': 'FLAT (Dow 800→800)',
-            'color': '#FF4500',  # Orange-red
+            'color': '#FF4500',
             'story': 'Oil shocks, wage-price spiral, "misery index" soars'
         },
         {
@@ -536,7 +517,7 @@ def create_american_yield_eras(df):
             'inflation': 'FALLING (14%→4%)',
             'recessions': '2 (1980, 1981)',
             'market': 'BOOMING (+220%)',
-            'color': '#00BFFF',  # Deep sky blue
+            'color': '#00BFFF',
             'story': 'Volcker breaks inflation, economy rebounds, stocks soar'
         },
         {
@@ -549,7 +530,7 @@ def create_american_yield_eras(df):
             'inflation': 'LOW (2-3%)',
             'recessions': '1 (1990)',
             'market': 'BOOMING (+320%)',
-            'color': '#FFD700',  # Gold
+            'color': '#FFD700',
             'story': 'Perfect economy: growth + low inflation + tech boom'
         },
         {
@@ -562,7 +543,7 @@ def create_american_yield_eras(df):
             'inflation': 'MODERATE (2-4%)',
             'recessions': '1 (2008 BIG)',
             'market': 'CRASH (-40% peak to trough)',
-            'color': '#8B0000',  # Dark red
+            'color': '#8B0000',
             'story': 'Dot-com crash, housing bubble, financial crisis'
         },
         {
@@ -575,7 +556,7 @@ def create_american_yield_eras(df):
             'inflation': 'LOW (1-2%)',
             'recessions': '0',
             'market': 'BOOMING (+190%)',
-            'color': '#9370DB',  # Medium purple
+            'color': '#9370DB',
             'story': 'Zero interest rates, quantitative easing, slow growth'
         },
         {
@@ -588,7 +569,7 @@ def create_american_yield_eras(df):
             'inflation': 'SURGING (2→9%)',
             'recessions': '1 (COVID)',
             'market': 'VOLATILE',
-            'color': '#FF6346',  # Tomato
+            'color': '#FF6346',
             'story': 'Pandemic, stimulus, inflation spike, Fed hiking'
         }
     ]
@@ -666,7 +647,6 @@ def create_american_yield_eras(df):
         
         # Add era-specific icons along the yield line
         if era['icon'] == '🔥' and era['name'] == '1970s':
-            # Add fire icons for each year of high inflation
             years = [1973, 1974, 1975, 1979]
             for year in years:
                 year_date = pd.to_datetime(f'{year}-06-30')
@@ -682,7 +662,6 @@ def create_american_yield_eras(df):
                     )
         
         elif era['icon'] == '❄️' and era['name'] == '1980s':
-            # Add snowflake at Volcker peak
             volcker_date = pd.to_datetime('1981-10-01')
             volcker_data = df[df['date'] == volcker_date]
             if not volcker_data.empty:
@@ -702,7 +681,6 @@ def create_american_yield_eras(df):
                 )
         
         elif era['icon'] == '✨' and era['name'] == '1990s':
-            # Add sparkle at tech boom
             tech_date = pd.to_datetime('1999-12-31')
             tech_data = df[df['date'] == tech_date]
             if not tech_data.empty:
@@ -722,7 +700,6 @@ def create_american_yield_eras(df):
                 )
         
         elif era['icon'] == '💥' and era['name'] == '2000s':
-            # Add explosion at Lehman
             lehman_date = pd.to_datetime('2008-09-15')
             lehman_data = df[df['date'] == lehman_date]
             if not lehman_data.empty:
@@ -802,13 +779,13 @@ def create_american_yield_eras(df):
     return fig
 
 # ============================================================================
-# CHART 2: THE VULNERABILITY INDEX
+# CHART 2: THE VULNERABILITY INDEX - USING CORRECT CALCULATION
 # ============================================================================
 
 def create_vulnerability_index(df, historical_events):
     """Chart 2: The Vulnerability Index™ - Your proprietary crisis warning system"""
     
-    # Add this at the beginning of the function
+    # Add explanatory note
     st.caption("""
     ⚠️ **Note:** The Vulnerability Index™ is NOT the VIX. 
     It combines 4 components: Curve Stress (yield curve), Credit Stress (spreads), 
@@ -816,6 +793,7 @@ def create_vulnerability_index(df, historical_events):
     The VIX is just one of four inputs.
     """)
     
+    # Use the corrected calculation function
     df_vuln = calculate_vulnerability_index(df)
     df_vuln = df_vuln.dropna(subset=['VULNERABILITY_INDEX'])
     
@@ -896,13 +874,11 @@ def create_vulnerability_index(df, historical_events):
     return fig
 
 # ============================================================================
-# CHART 3: The Economic Carousel - With Streamlit State Management
+# CHART 3: THE ECONOMIC CAROUSEL
 # ============================================================================
 
 def create_economic_carousel(df, chart_key="carousel", force_recreate=False):
-    """
-    Chart 3: Circular Bar Chart - With state management for animations
-    """
+    """Chart 3: Circular Bar Chart - With state management for animations"""
     
     # Initialize session state for this specific chart instance
     if f'{chart_key}_initialized' not in st.session_state or force_recreate:
@@ -936,12 +912,12 @@ def create_economic_carousel(df, chart_key="carousel", force_recreate=False):
         today_row = today_data.iloc[-1]
         today_yield = today_row['DGS10']
         today_date = today_row['date']
-        today_str = today_date.strftime('%b %d, %Y')
+        today_str = safe_strftime(today_date, '%b %d, %Y')
         today_display = f"{today_yield:.2f}%"
     else:
         today_yield = 4.5
         today_date = datetime.now()
-        today_str = today_date.strftime('%b %d, %Y')
+        today_str = safe_strftime(today_date, '%b %d, %Y')
         today_display = f"{today_yield:.2f}%"
     
     # Create circular bar chart
@@ -1207,16 +1183,13 @@ def create_economic_carousel(df, chart_key="carousel", force_recreate=False):
     )
     
     return fig
+
 # ============================================================================
-# CHART 4: THE ECONOMIC COMPASS - SIMPLE BUT POWERFUL
+# CHART 4: THE ECONOMIC COMPASS
 # ============================================================================
 
 def create_economic_compass(df):
-    """
-    Chart 4: The Economic Compass
-    A 2D scatter plot with Inflation on X, Unemployment on Y, 
-    colored by decade, sized by VIX
-    """
+    """Chart 4: The Economic Compass - 2D scatter plot with Inflation vs Unemployment"""
     
     # Prepare data
     required_cols = ['UNRATE', 'CPI_YOY', 'VIX', 'date']
@@ -1265,7 +1238,7 @@ def create_economic_compass(df):
                 line=dict(color='white', width=1)
             ),
             name=f"{int(decade)}s",
-            text=[f"<b>{row['date'].strftime('%b %Y')}</b><br>"
+            text=[f"<b>{safe_strftime(row['date'], '%b %Y')}</b><br>"
                   f"Unemp: {row['UNRATE']:.1f}%<br>"
                   f"Inflation: {row['CPI_YOY']:.1f}%<br>"
                   f"VIX: {row['VIX']:.1f}" 
@@ -1631,19 +1604,13 @@ def create_inflation_story(df):
 # ============================================================================
 
 def create_vulnerability_clock(df):
-    """
-    Chart 8: Radar chart showing 8 dimensions of stress
-    
-    ⚠️ NOTE: "Market Fear" in this chart IS the VIX. 
-    The overall Vulnerability Index™ (Chart 2) combines 4 components,
-    while this clock shows 8 separate dimensions including the VIX.
-    """
+    """Chart 8: Radar chart showing 8 dimensions of stress"""
     
     # Get today's date and date 6 months ago
     today_date = df['date'].iloc[-1]
     six_months_ago_date = today_date - pd.Timedelta(days=180)
     
-    # Define the 8 dimensions and their columns - FIXED: No f-strings in lambda
+    # Define the 8 dimensions and their columns
     dimensions = [
         {'name': 'Curve', 'column': '10Y2Y', 'format': lambda x: "{:.2f}%".format(x)},
         {'name': 'Credit', 'column': 'HY_SPREAD', 'format': lambda x: "{:.2f}%".format(x)},
@@ -1911,25 +1878,13 @@ def create_vulnerability_clock(df):
     return fig
 
 # ============================================================================
-# CHART 9: ERA COMPARISON - IMPROVED VERSION WITH BETTER MATCHES
+# CHART 9: ERA COMPARISON
 # ============================================================================
 
 def create_era_comparison(df):
-    """Chart 9: Compare today with pre-2000 and post-2000 matches (improved)"""
+    """Chart 9: Compare today with pre-2000 and post-2000 matches"""
     
     pre_2000_match, post_2000_match = find_historical_matches(df, df['date'].iloc[-1])
-    
-    # Debug prints to console
-    print("\n=== ERA COMPARISON DEBUG ===")
-    print(f"Pre-2000 match empty: {pre_2000_match.empty}")
-    if not pre_2000_match.empty:
-        print(f"Pre-2000 match date: {pre_2000_match.iloc[0]['date']}")
-        print(f"Pre-2000 match yield: {pre_2000_match.iloc[0]['DGS10']:.2f}%")
-    print(f"Post-2000 match empty: {post_2000_match.empty}")
-    if not post_2000_match.empty:
-        print(f"Post-2000 match date: {post_2000_match.iloc[0]['date']}")
-        print(f"Post-2000 match yield: {post_2000_match.iloc[0]['DGS10']:.2f}%")
-    print("===========================\n")
     
     # Get today's values
     today_yield, _, today_date = get_latest_value(df, 'DGS10')
@@ -2111,26 +2066,15 @@ def create_era_comparison(df):
             """, unsafe_allow_html=True)
     
     return None
+
 # ============================================================================
-# CHART 9: ERA COMPARISON - FIGURE VERSION FOR FULL SCREEN (FIXED)
+# CHART 9: ERA COMPARISON - FIGURE VERSION FOR FULL SCREEN
 # ============================================================================
 
 def create_era_comparison_figure(df):
-    """Create a figure version of Era Comparison for full screen display - FIXED with improved matching"""
+    """Create a figure version of Era Comparison for full screen display"""
     
     pre_2000_match, post_2000_match = find_historical_matches(df, df['date'].iloc[-1])
-    
-    # Debug prints to console
-    print("\n=== ERA COMPARISON FULLSCREEN DEBUG ===")
-    print(f"Pre-2000 match empty: {pre_2000_match.empty}")
-    if not pre_2000_match.empty:
-        print(f"Pre-2000 match date: {pre_2000_match.iloc[0]['date']}")
-        print(f"Pre-2000 match yield: {pre_2000_match.iloc[0]['DGS10']:.2f}%")
-    print(f"Post-2000 match empty: {post_2000_match.empty}")
-    if not post_2000_match.empty:
-        print(f"Post-2000 match date: {post_2000_match.iloc[0]['date']}")
-        print(f"Post-2000 match yield: {post_2000_match.iloc[0]['DGS10']:.2f}%")
-    print("======================================\n")
     
     # Get today's values
     today_yield, _, today_date = get_latest_value(df, 'DGS10')
@@ -2325,7 +2269,7 @@ def create_era_comparison_figure(df):
         plot_bgcolor='rgba(0,0,0,0)',
         paper_bgcolor='rgba(0,0,0,0)',
         showlegend=False,
-        margin=dict(l=50, r=50, t=100, b=100)  # Increased bottom margin for the note
+        margin=dict(l=50, r=50, t=100, b=100)
     )
     
     return fig
@@ -2503,7 +2447,7 @@ def create_housing_cycle(df):
     return fig
 
 # ============================================================================
-# CHART 12: THE COMPLETE DASHBOARD - REGULAR VERSION (COMPLETELY FIXED)
+# CHART 12: THE COMPLETE DASHBOARD - SPARKLINE CARDS
 # ============================================================================
 
 def create_sparkline_card(title, column, df, card_id=None):
@@ -2614,7 +2558,6 @@ def create_sparkline_card(title, column, df, card_id=None):
     unique_key = f"sparkline_{card_id}_{column}_{int(np.random.random()*10000)}"
     st.plotly_chart(fig, use_container_width=True, key=unique_key)
 
-
 def create_complete_dashboard(df):
     """Chart 12: 2x4 grid of sparkline cards showing latest available values"""
     
@@ -2694,9 +2637,8 @@ def create_complete_dashboard(df):
     
     return None
 
-
 # ============================================================================
-# CHART 12: THE COMPLETE DASHBOARD - FIGURE VERSION FOR FULL SCREEN (FIXED)
+# CHART 12: THE COMPLETE DASHBOARD - FIGURE VERSION FOR FULL SCREEN
 # ============================================================================
 
 def create_dashboard_figure(df):
@@ -2815,7 +2757,7 @@ def create_dashboard_figure(df):
     return fig
 
 # ============================================================================
-# MAIN TAB FUNCTION - UPDATED WITH FULLSCREEN FIX
+# MAIN TAB FUNCTION
 # ============================================================================
 
 def create_vault_tab(df, historical_events, view_mode='thumbnail', fullscreen_id=None):
@@ -2835,9 +2777,9 @@ def create_vault_tab(df, historical_events, view_mode='thumbnail', fullscreen_id
     </div>
     """, unsafe_allow_html=True)
     
-    # =========================================================================
+    # ============================================================================
     # ADD DOCUMENTATION BOX ABOUT VULNERABILITY INDEX VS VIX
-    # =========================================================================
+    # ============================================================================
     st.markdown("""
     <div style="background: rgba(255,215,0,0.1); padding: 15px; border-radius: 10px; margin-bottom: 20px; border-left: 4px solid #FFD700;">
         <h4 style="color: #FFD700; margin: 0 0 10px 0;">🔴 Understanding the Vulnerability Index™</h4>
@@ -2847,10 +2789,10 @@ def create_vault_tab(df, historical_events, view_mode='thumbnail', fullscreen_id
         </p>
         <p style="color: #ccc; margin: 10px 0 0 0;">
             The Vulnerability Index™ combines <strong>4 components</strong>:<br>
-            • <span style="color: #FFD700;">Curve Stress</span> (yield curve inversion)<br>
-            • <span style="color: #FFD700;">Credit Stress</span> (high yield spreads)<br>
-            • <span style="color: #FFD700;">VIX Stress</span> (market fear) ← this is where the VIX appears<br>
-            • <span style="color: #FFD700;">Systemic Stress</span> (financial conditions)
+            • <span style="color: #FFD700;">Curve Stress</span> (yield curve inversion) - 30% weight<br>
+            • <span style="color: #FFD700;">Credit Stress</span> (high yield spreads) - 25% weight<br>
+            • <span style="color: #FFD700;">VIX Stress</span> (market fear) - 25% weight<br>
+            • <span style="color: #FFD700;">Systemic Stress</span> (financial conditions) - 20% weight
         </p>
         <p style="color: #888; font-size: 0.9rem; margin: 10px 0 0 0; font-style: italic;">
             Think of it this way: VIX is your heart rate. The Vulnerability Index™ is your doctor's full check-up.
@@ -2858,26 +2800,66 @@ def create_vault_tab(df, historical_events, view_mode='thumbnail', fullscreen_id
     </div>
     """, unsafe_allow_html=True)
     
-    # Today's Highlight
+    # ============================================================================
+    # TODAY'S HIGHLIGHT - Using corrected calculation
+    # ============================================================================
     df_vuln = calculate_vulnerability_index(df)
-    latest_vuln = df_vuln['VULNERABILITY_INDEX'].iloc[-1]
     
-    # Check if we got a valid number
-    if pd.isna(latest_vuln):
-        valid_indices = df_vuln['VULNERABILITY_INDEX'].notna()
-        if valid_indices.any():
-            latest_vuln = df_vuln.loc[valid_indices, 'VULNERABILITY_INDEX'].iloc[-1]
-            status, color = get_vulnerability_status(latest_vuln)
-            highlight_message = f"Vulnerability Index at {latest_vuln:.1f} ({status})"
+    # Get the latest non-nan value
+    vuln_series = df_vuln['VULNERABILITY_INDEX'].dropna()
+    if not vuln_series.empty:
+        latest_vuln = vuln_series.iloc[-1]
+        status, color = get_vulnerability_status(latest_vuln)
+        highlight_message = f"Vulnerability Index at {latest_vuln:.1f} ({status})"
+    else:
+        # Fallback: try to get the most recent from the original dataframe
+        if 'VULNERABILITY_INDEX' in df.columns:
+            valid_indices = df['VULNERABILITY_INDEX'].notna()
+            if valid_indices.any():
+                latest_vuln = df.loc[valid_indices, 'VULNERABILITY_INDEX'].iloc[-1]
+                status, color = get_vulnerability_status(latest_vuln)
+                highlight_message = f"Vulnerability Index at {latest_vuln:.1f} ({status})"
+            else:
+                status, color = "UNAVAILABLE", COLORS['gray']
+                highlight_message = "Vulnerability Index data is currently being updated"
         else:
             status, color = "UNAVAILABLE", COLORS['gray']
             highlight_message = "Vulnerability Index data is currently being updated"
-    else:
-        status, color = get_vulnerability_status(latest_vuln)
-        highlight_message = f"Vulnerability Index at {latest_vuln:.1f} ({status})"
     
-    latest_date = df['date'].iloc[-1]
-    date_str = safe_strftime(latest_date, '%B %d, %Y')
+    # Get the latest date properly - IMPROVED FIX WITH DEBUG
+    try:
+        if df is not None and not df.empty and 'date' in df.columns:
+            # Get the last valid date
+            valid_dates = df['date'].dropna()
+            if not valid_dates.empty:
+                latest_date = valid_dates.iloc[-1]
+                
+                # Format the date
+                if isinstance(latest_date, pd.Timestamp):
+                    date_str = latest_date.strftime('%B %d, %Y')
+                elif isinstance(latest_date, str):
+                    try:
+                        # Try parsing with dayfirst=True (for DD/MM/YYYY format)
+                        date_obj = pd.to_datetime(latest_date, format='%d/%m/%Y', dayfirst=True)
+                        date_str = date_obj.strftime('%B %d, %Y')
+                    except:
+                        try:
+                            # Try auto-detection
+                            date_obj = pd.to_datetime(latest_date)
+                            date_str = date_obj.strftime('%B %d, %Y')
+                        except:
+                            date_str = latest_date
+                elif hasattr(latest_date, 'strftime'):
+                    date_str = latest_date.strftime('%B %d, %Y')
+                else:
+                    date_str = str(latest_date)
+            else:
+                date_str = "Unknown (no valid dates)"
+        else:
+            date_str = "Unknown (data not loaded)"
+    except Exception as e:
+        print(f"Error formatting date: {e}")
+        date_str = "Unknown"
     
     st.markdown(f"""
     <div style="background: linear-gradient(135deg, #00267F 0%, #0033A0 100%);
@@ -2891,7 +2873,9 @@ def create_vault_tab(df, historical_events, view_mode='thumbnail', fullscreen_id
     </div>
     """, unsafe_allow_html=True)
     
-    # Check if any chart is in fullscreen mode
+    # ============================================================================
+    # CHECK FOR FULLSCREEN MODE
+    # ============================================================================
     fullscreen_active = False
     for chart in CHART_METADATA:
         if st.session_state.get(f'fullscreen_{chart["id"]}', False):
@@ -2900,7 +2884,10 @@ def create_vault_tab(df, historical_events, view_mode='thumbnail', fullscreen_id
             # Header with close button
             col1, col2, col3 = st.columns([1, 6, 1])
             with col2:
-                st.markdown(f"<h2 style='color: {COLORS['gold']}; text-align: center;'>{chart['title']} - Full Screen</h2>", unsafe_allow_html=True)
+                st.markdown(
+                    f"<h2 style='color: {COLORS['gold']}; text-align: center;'>{chart['title']} - Full Screen</h2>", 
+                    unsafe_allow_html=True
+                )
             with col3:
                 if st.button("✕ Close", key=f"close_modal_{chart['id']}"):
                     st.session_state[f'fullscreen_{chart["id"]}'] = False
@@ -2920,12 +2907,16 @@ def create_vault_tab(df, historical_events, view_mode='thumbnail', fullscreen_id
             
             elif chart['id'] == 3:
                 # Create a fresh chart for fullscreen with unique key
-                fig = create_economic_carousel(df, chart_key=f"fullscreen_{chart['id']}", force_recreate=True)
+                fig = create_economic_carousel(
+                    df, 
+                    chart_key=f"fullscreen_{chart['id']}", 
+                    force_recreate=True
+                )
                 fig.update_layout(height=700)
                 # Use a unique key with counter to force fresh instance
                 unique_key = f"fullscreen_{chart['id']}_{st.session_state.get('vault_key_counter', 0)}"
-                st.plotly_chart(fig, use_container_width=True, key=unique_key)            
-
+                st.plotly_chart(fig, use_container_width=True, key=unique_key)
+            
             elif chart['id'] == 4:
                 fig = create_economic_compass(df)
                 fig.update_layout(height=700)
@@ -2973,6 +2964,9 @@ def create_vault_tab(df, historical_events, view_mode='thumbnail', fullscreen_id
             
             break
     
+    # ============================================================================
+    # THUMBNAIL VIEW (if not in fullscreen)
+    # ============================================================================
     if not fullscreen_active:
         # Create tabs for Charts and Maps
         chart_tab, map_tab = st.tabs(["📊 12 Charts", "🗺️ 6 Maps (Coming Soon)"])
@@ -2998,42 +2992,77 @@ def create_vault_tab(df, historical_events, view_mode='thumbnail', fullscreen_id
                                 if chart['id'] == 1:
                                     fig = create_american_yield_eras(df)
                                     fig.update_layout(height=300)
-                                    st.plotly_chart(fig, use_container_width=True, key=f"thumb_{chart['id']}")
+                                    st.plotly_chart(
+                                        fig, 
+                                        use_container_width=True, 
+                                        key=f"thumb_{chart['id']}"
+                                    )
                                 
                                 elif chart['id'] == 2:
                                     fig = create_vulnerability_index(df, historical_events)
                                     fig.update_layout(height=300)
-                                    st.plotly_chart(fig, use_container_width=True, key=f"thumb_{chart['id']}")
+                                    st.plotly_chart(
+                                        fig, 
+                                        use_container_width=True, 
+                                        key=f"thumb_{chart['id']}"
+                                    )
                                 
                                 elif chart['id'] == 3:
-                                    fig = create_economic_carousel(df, chart_key=f"thumb_{chart['id']}")
+                                    fig = create_economic_carousel(
+                                        df, 
+                                        chart_key=f"thumb_{chart['id']}"
+                                    )
                                     fig.update_layout(height=300)
-                                    st.plotly_chart(fig, use_container_width=True, key=f"thumb_{chart['id']}")
+                                    st.plotly_chart(
+                                        fig, 
+                                        use_container_width=True, 
+                                        key=f"thumb_{chart['id']}"
+                                    )
                                 
                                 elif chart['id'] == 4:
                                     fig = create_economic_compass(df)
                                     fig.update_layout(height=300)
-                                    st.plotly_chart(fig, use_container_width=True, key=f"thumb_{chart['id']}")
+                                    st.plotly_chart(
+                                        fig, 
+                                        use_container_width=True, 
+                                        key=f"thumb_{chart['id']}"
+                                    )
                                 
                                 elif chart['id'] == 5:
                                     fig = create_fed_footprint(df)
                                     fig.update_layout(height=300)
-                                    st.plotly_chart(fig, use_container_width=True, key=f"thumb_{chart['id']}")
+                                    st.plotly_chart(
+                                        fig, 
+                                        use_container_width=True, 
+                                        key=f"thumb_{chart['id']}"
+                                    )
                                 
                                 elif chart['id'] == 6:
                                     fig = create_real_unemployment_gap(df)
                                     fig.update_layout(height=300)
-                                    st.plotly_chart(fig, use_container_width=True, key=f"thumb_{chart['id']}")
+                                    st.plotly_chart(
+                                        fig, 
+                                        use_container_width=True, 
+                                        key=f"thumb_{chart['id']}"
+                                    )
                                 
                                 elif chart['id'] == 7:
                                     fig = create_inflation_story(df)
                                     fig.update_layout(height=300)
-                                    st.plotly_chart(fig, use_container_width=True, key=f"thumb_{chart['id']}")
+                                    st.plotly_chart(
+                                        fig, 
+                                        use_container_width=True, 
+                                        key=f"thumb_{chart['id']}"
+                                    )
                                 
                                 elif chart['id'] == 8:
                                     fig = create_vulnerability_clock(df)
                                     fig.update_layout(height=300)
-                                    st.plotly_chart(fig, use_container_width=True, key=f"thumb_{chart['id']}")
+                                    st.plotly_chart(
+                                        fig, 
+                                        use_container_width=True, 
+                                        key=f"thumb_{chart['id']}"
+                                    )
                                 
                                 elif chart['id'] == 9:
                                     create_era_comparison(df)
@@ -3041,12 +3070,20 @@ def create_vault_tab(df, historical_events, view_mode='thumbnail', fullscreen_id
                                 elif chart['id'] == 10:
                                     fig = create_fear_timeline(df, historical_events)
                                     fig.update_layout(height=300)
-                                    st.plotly_chart(fig, use_container_width=True, key=f"thumb_{chart['id']}")
+                                    st.plotly_chart(
+                                        fig, 
+                                        use_container_width=True, 
+                                        key=f"thumb_{chart['id']}"
+                                    )
                                 
                                 elif chart['id'] == 11:
                                     fig = create_housing_cycle(df)
                                     fig.update_layout(height=300)
-                                    st.plotly_chart(fig, use_container_width=True, key=f"thumb_{chart['id']}")
+                                    st.plotly_chart(
+                                        fig, 
+                                        use_container_width=True, 
+                                        key=f"thumb_{chart['id']}"
+                                    )
                                 
                                 elif chart['id'] == 12:
                                     create_complete_dashboard(df)
